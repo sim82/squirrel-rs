@@ -1,0 +1,10 @@
+[package]
+name = "squirrel-rs"
+version = "0.1.0"
+authors = ["sim82 <simberger@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+num-traits = "0.2"
+num-derive = "0.2"
+byteorder = "1"
