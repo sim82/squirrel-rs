@@ -55,7 +55,7 @@ fn expect_tag(rdr: &mut dyn Read, rtag: FileTags) -> Result<()> {
     }
 }
 
-pub fn read_closure(rdr: &mut dyn Read) -> Result<()> {
+pub fn read_closure(rdr: &mut dyn Read) -> Result<Object> {
     let file_tag = rdr.read_u16::<LittleEndian>()?;
     match FromPrimitive::from_u16(file_tag) {
         Some(FileTags::BytecodeStreamTag) => (),
@@ -70,11 +70,14 @@ pub fn read_closure(rdr: &mut dyn Read) -> Result<()> {
     expect_tag(rdr, FileTags::SizeChar)?;
     expect_tag(rdr, FileTags::SizeInteger)?;
     expect_tag(rdr, FileTags::SizeFloat)?;
-
-    Ok(())
+    let func_proto = read_funcproto(rdr)?;
+    let closure = object::Closure {
+        func_proto: func_proto,
+    };
+    Ok(Object::Closure(Rc::new(closure)))
 }
 
-pub fn read_funcproto(rdr: &mut dyn Read) -> Result<object::FuncProto> {
+pub fn read_funcproto(rdr: &mut dyn Read) -> Result<Object> {
     expect_tag(rdr, FileTags::ClosurestreamPart)?;
     let source_name = read_object(rdr)?;
     let name = read_object(rdr)?;
@@ -83,16 +86,27 @@ pub fn read_funcproto(rdr: &mut dyn Read) -> Result<object::FuncProto> {
         source_name: source_name,
         name: name,
     };
-    Ok(obj)
-    // Ok(Object::FuncProto(Rc::new(obj)))
+    // Ok(obj)
+    Ok(Object::FuncProto(Rc::new(obj)))
 }
 
 #[cfg(test)]
 mod tests {
     use super::read_closure;
+    use super::Object;
     #[test]
     fn load_closure() {
         let mut bc = &include_bytes!("out.cnut")[..];
-        read_closure(&mut bc).unwrap();
+        let closure = read_closure(&mut bc).unwrap();
+        println!("{:?}", closure);
+        if let Object::Closure(closure) = &closure {
+            if let Object::FuncProto(func_proto) = &closure.func_proto {
+                assert_eq!(
+                    format!("{:?}", func_proto.source_name),
+                    "String(\"factorial.nut\")",
+                );
+                assert_eq!(format!("{:?}", func_proto.name), "String(\"main\")");
+            }
+        }
     }
 }

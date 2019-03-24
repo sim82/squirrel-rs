@@ -87,8 +87,12 @@ enum FileTags {
 
 pub mod object {
     use super::Object;
-    pub struct Closure {}
+    #[derive(Debug)]
+    pub struct Closure {
+        pub func_proto: Object,
+    }
 
+    #[derive(Debug)]
     pub struct FuncProto {
         pub source_name: Object,
         pub name: Object,
@@ -100,6 +104,7 @@ pub mod types {
     pub type Float = f32;
 }
 
+#[derive(Debug)]
 pub enum Object {
     Integer(types::Integer),
     Float(types::Float),
