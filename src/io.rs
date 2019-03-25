@@ -1,5 +1,6 @@
 use super::{object, Error, FileTags, Object, ObjectType, Result};
 
+use crate::bytecode::Instruction;
 use byteorder::{LittleEndian, ReadBytesExt};
 use num_traits::{FromPrimitive, ToPrimitive};
 use std::io::Read;
@@ -161,10 +162,9 @@ pub fn read_funcproto(rdr: &mut dyn Read) -> Result<Object> {
 
     expect_tag(rdr, FileTags::ClosurestreamPart)?;
     println!("instructions: {}", ninstructions);
-    for _i in 0..ninstructions {
-        let _arg1 = rdr.read_u32::<LittleEndian>()?;
-        let mut buf = [0u8; 4];
-        rdr.read(&mut buf)?;
+    for i in 0..ninstructions {
+        let instr = Instruction::read(rdr)?;
+        println!("instr: {} {:x?}", i, instr);
     }
 
     expect_tag(rdr, FileTags::ClosurestreamPart)?;
@@ -208,7 +208,7 @@ mod tests {
         let mut bc = &include_bytes!("out.cnut")[..];
         let closure = read_closure(&mut bc).unwrap();
         println!("{:?}", closure);
-        // assert!(false);
+        assert!(false);
         if let Object::Closure(closure) = &closure {
             if let Object::FuncProto(func_proto) = &closure.func_proto {
                 assert_eq!(
