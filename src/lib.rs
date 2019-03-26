@@ -4,6 +4,7 @@ use std::rc::Rc;
 
 pub mod bytecode;
 pub mod io;
+pub mod vm;
 
 #[derive(Debug)]
 pub enum Error {
@@ -104,11 +105,12 @@ pub mod types {
     pub type Float = f32;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Object {
     Integer(types::Integer),
     Float(types::Float),
     String(String),
     FuncProto(Rc<object::FuncProto>),
     Closure(Rc<object::Closure>),
+    Null,
 }

@@ -192,23 +192,23 @@ mod tests {
     use super::Object;
     use std::io::Seek;
 
-    fn read_cnut<R: std::io::Read + Seek>(rdr: &mut R) -> super::Result<Object> {
-        let closure = read_closure(rdr);
-        match closure {
-            Ok(c) => Ok(c),
-            Err(err) => {
-                println!("reader pos: {:?}", rdr.seek(std::io::SeekFrom::Current(0)));
-                Err(err)
-            }
-        }
-    }
+    // fn read_cnut<R: std::io::Read + Seek>(rdr: &mut R) -> super::Result<Object> {
+    //     let closure = read_closure(rdr);
+    //     match closure {
+    //         Ok(c) => Ok(c),
+    //         Err(err) => {
+    //             println!("reader pos: {:?}", rdr.seek(std::io::SeekFrom::Current(0)));
+    //             Err(err)
+    //         }
+    //     }
+    // }
 
     #[test]
     fn load_closure() {
         let mut bc = &include_bytes!("out.cnut")[..];
         let closure = read_closure(&mut bc).unwrap();
         println!("{:?}", closure);
-        assert!(false);
+        // assert!(false);
         if let Object::Closure(closure) = &closure {
             if let Object::FuncProto(func_proto) = &closure.func_proto {
                 assert_eq!(
