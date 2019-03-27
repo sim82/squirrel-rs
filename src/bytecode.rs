@@ -73,11 +73,11 @@ pub enum Opcode {
 
 // #[derive(Debug)]
 pub struct Instruction {
-    arg1: u32,
-    opcode: u8,
-    arg0: u8,
-    arg2: u8,
-    arg3: u8,
+    pub arg1: u32,
+    pub opcode: u8,
+    pub arg0: u8,
+    pub arg2: u8,
+    pub arg3: u8,
 }
 
 impl Instruction {

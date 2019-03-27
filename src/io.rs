@@ -87,100 +87,95 @@ pub fn read_funcproto(rdr: &mut dyn Read) -> Result<Object> {
 
     expect_tag(rdr, FileTags::ClosurestreamPart)?;
 
-    let nliterals = rdr.read_u64::<LittleEndian>()?;
-    let nparameters = rdr.read_u64::<LittleEndian>()?;
-    let noutervalues = rdr.read_u64::<LittleEndian>()?;
-    let nlocalvarinfos = rdr.read_u64::<LittleEndian>()?;
-    let nlineinfos = rdr.read_u64::<LittleEndian>()?;
-    let ndefaultparams = rdr.read_u64::<LittleEndian>()?;
-    let ninstructions = rdr.read_u64::<LittleEndian>()?;
-    let nfunctions = rdr.read_u64::<LittleEndian>()?;
+    let nliterals = rdr.read_i64::<LittleEndian>()?;
+    let nparameters = rdr.read_i64::<LittleEndian>()?;
+    let noutervalues = rdr.read_i64::<LittleEndian>()?;
+    let nlocalvarinfos = rdr.read_i64::<LittleEndian>()?;
+    let nlineinfos = rdr.read_i64::<LittleEndian>()?;
+    let ndefaultparams = rdr.read_i64::<LittleEndian>()?;
+    let ninstructions = rdr.read_i64::<LittleEndian>()?;
+    let nfunctions = rdr.read_i64::<LittleEndian>()?;
 
-    println!(
-        "{} {} {} {} {} {} {} {}",
-        nliterals,
-        nparameters,
-        noutervalues,
-        nlocalvarinfos,
-        nlineinfos,
-        ndefaultparams,
-        ninstructions,
-        nfunctions
-    );
-
-    let obj = object::FuncProto {
-        source_name: source_name,
-        name: name,
-    };
     expect_tag(rdr, FileTags::ClosurestreamPart)?;
-    println!("literals: {}", nliterals);
-    for i in 0..nliterals {
-        let literal = read_object(rdr)?;
-        println!("literal: {} {:?}", i, literal);
+    let mut literals = Vec::new();
+    for _i in 0..nliterals {
+        literals.push(read_object(rdr)?);
     }
 
     expect_tag(rdr, FileTags::ClosurestreamPart)?;
-    println!("parameters: {}", nparameters);
-    for i in 0..nparameters {
-        let parameter = read_object(rdr)?;
-        println!("parameter: {} {:?}", i, parameter);
+    let mut parameters = Vec::new();
+    for _i in 0..nparameters {
+        parameters.push(read_object(rdr)?);
     }
 
     expect_tag(rdr, FileTags::ClosurestreamPart)?;
-    println!("outervalues: {}", noutervalues);
-    for i in 0..noutervalues {
-        let ovtype = rdr.read_u64::<LittleEndian>()?;
-        let o = read_object(rdr)?;
-        let name = read_object(rdr)?;
-
-        println!("outervalue: {} {} {:?} {:?}", i, ovtype, o, name);
+    let mut outervalues = Vec::new();
+    for _i in 0..noutervalues {
+        outervalues.push((
+            rdr.read_i64::<LittleEndian>()?,
+            read_object(rdr)?,
+            read_object(rdr)?,
+        ));
     }
 
     expect_tag(rdr, FileTags::ClosurestreamPart)?;
-    println!("localvarinfos: {}", nlocalvarinfos);
-    for i in 0..nlocalvarinfos {
-        let name = read_object(rdr)?;
-        let pos = rdr.read_u64::<LittleEndian>()?;
-        let start_op = rdr.read_u64::<LittleEndian>()?;
-        let end_op = rdr.read_u64::<LittleEndian>()?;
-
-        println!("localvarinfos: {} {:?}", i, name);
+    let mut localvarinfos = Vec::new();
+    for _i in 0..nlocalvarinfos {
+        localvarinfos.push((
+            read_object(rdr)?,
+            rdr.read_i64::<LittleEndian>()?,
+            rdr.read_i64::<LittleEndian>()?,
+            rdr.read_i64::<LittleEndian>()?,
+        ));
     }
 
     expect_tag(rdr, FileTags::ClosurestreamPart)?;
-    println!("lineinfos: {}", nlineinfos);
+    let mut lineinfos = Vec::new();
     for _i in 0..nlineinfos {
-        let _line = rdr.read_u64::<LittleEndian>()?;
-        let _op = rdr.read_u64::<LittleEndian>()?;
+        lineinfos.push((
+            rdr.read_i64::<LittleEndian>()?,
+            rdr.read_i64::<LittleEndian>()?,
+        ));
     }
 
     expect_tag(rdr, FileTags::ClosurestreamPart)?;
-    println!("defaultpar: {}", ndefaultparams);
+    let mut defaultparams = Vec::new();
     for _i in 0..ndefaultparams {
-        let _defaultparams = rdr.read_u64::<LittleEndian>()?;
+        defaultparams.push(rdr.read_i64::<LittleEndian>()?);
     }
 
     expect_tag(rdr, FileTags::ClosurestreamPart)?;
-    println!("instructions: {}", ninstructions);
-    for i in 0..ninstructions {
-        let instr = Instruction::read(rdr)?;
-        println!("instr: {} {:x?}", i, instr);
+    let mut instructions = Vec::new();
+    for _i in 0..ninstructions {
+        instructions.push(Instruction::read(rdr)?);
     }
 
     expect_tag(rdr, FileTags::ClosurestreamPart)?;
-    println!("functions: {}", nfunctions);
+    let mut functions = Vec::new();
     for _i in 0..nfunctions {
-        let _func = read_funcproto(rdr)?;
+        functions.push(read_funcproto(rdr)?);
     }
 
-    let stacksize = rdr.read_u64::<LittleEndian>()?;
-    println!("stacksize: {}", stacksize);
+    let stacksize = rdr.read_i64::<LittleEndian>()?;
     let mut bgenerator = [0u8; 1];
-    println!("bgenerator: {}", bgenerator[0] as u32);
 
     rdr.read(&mut bgenerator)?;
-    let varparams = rdr.read_u64::<LittleEndian>()?;
-    println!("varparams: {}", varparams);
+    let varparams = rdr.read_i64::<LittleEndian>()?;
+
+    let mut obj = object::FuncProto {
+        source_name: source_name,
+        name: name,
+
+        literals: literals,
+        parameters: parameters,
+        outervalues: outervalues,
+        localvarinfos: localvarinfos,
+        lineinfos: lineinfos,
+        defaultparams: defaultparams,
+        instructions: instructions,
+        functions: functions,
+        stacksize: stacksize,
+    };
 
     // Ok(obj)
     Ok(Object::FuncProto(Rc::new(obj)))

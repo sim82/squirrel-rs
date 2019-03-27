@@ -6,6 +6,7 @@ pub mod bytecode;
 pub mod io;
 pub mod vm;
 
+pub mod object;
 #[derive(Debug)]
 pub enum Error {
     RuntimeError(String),
@@ -86,20 +87,6 @@ enum FileTags {
     SizeFloat = 4,
 }
 
-pub mod object {
-    use super::Object;
-    #[derive(Debug)]
-    pub struct Closure {
-        pub func_proto: Object,
-    }
-
-    #[derive(Debug)]
-    pub struct FuncProto {
-        pub source_name: Object,
-        pub name: Object,
-    }
-}
-
 pub mod types {
     pub type Integer = i64;
     pub type Float = f32;
@@ -113,4 +100,25 @@ pub enum Object {
     FuncProto(Rc<object::FuncProto>),
     Closure(Rc<object::Closure>),
     Null,
+}
+
+impl Object {
+    fn closure(&self) -> Result<Rc<object::Closure>> {
+        match self {
+            Object::Closure(closure) => Ok(closure.clone()),
+            _ => Err(Error::RuntimeError(format!(
+                "expected closure. found {:?}",
+                self
+            ))),
+        }
+    }
+    fn func_proto(&self) -> Result<Rc<object::FuncProto>> {
+        match self {
+            Object::FuncProto(fp) => Ok(fp.clone()),
+            _ => Err(Error::RuntimeError(format!(
+                "expected FuncProto. found {:?}",
+                self
+            ))),
+        }
+    }
 }
