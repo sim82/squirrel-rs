@@ -1,5 +1,10 @@
-return 123 + 666;
 
+if (1+2 == 2) {
+	return 111 * 7 - 666;
+} 
+else {
+    return 123;
+}
 #function factorial(x)
 #{
 #  if (x == 0) {

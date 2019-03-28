@@ -1,18 +1,31 @@
+#![allow(dead_code)]
 use crate::bytecode::Opcode;
 use crate::{object, types, Object};
 use crate::{Error, Result};
 use num_traits;
+use std::fmt::Display;
 use std::rc::Rc;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 struct StackFrame {
     base: types::Integer,
     top: types::Integer,
 }
 
+#[derive(Debug)]
 struct Stack {
     stack: Vec<Object>,
     frame: StackFrame,
+}
+
+impl Display for Stack {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        writeln!(f, "stack base: {} top: {}", self.frame.base, self.frame.top)?;
+        for i in self.frame.base..self.frame.top {
+            writeln!(f, "{}: {:?}", i, self.stack[i as usize])?;
+        }
+        Ok(())
+    }
 }
 
 impl Stack {
@@ -62,11 +75,39 @@ struct CallInfo {
 
     closure: Object,
     ip: types::Integer,
+    root: bool,
+
+    target: types::Integer,
 }
 
 struct Executor {
     stack: Stack,
     callstack: Vec<CallInfo>,
+}
+
+enum LoopState {
+    Continue,
+    LeaveFrame(Object),
+}
+
+macro_rules! arith {
+    ($op:tt, $self:expr, $instr:expr) => {
+        {
+        let op1 = $self.stack.value($instr.arg2 as types::Integer);
+        let op2 = $self.stack.value($instr.arg1 as types::Integer);
+
+        let res = match (op1, op2) {
+            (Object::Integer(int1), Object::Integer(int2)) => Object::Integer(*int1 $op *int2),
+            _ => {
+                return Err(Error::RuntimeError(format!(
+                    "unhandled operands {:?} {:?}",
+                    op1, op2
+                )))
+            }
+        };
+        *$self.stack.value_mut($instr.arg0 as types::Integer) = res;
+        LoopState::Continue
+    }};
 }
 
 impl Executor {
@@ -79,7 +120,17 @@ impl Executor {
 
     fn call(&mut self, num_params: types::Integer, retval: bool) -> Result<()> {
         let closure = self.stack.up(-((num_params + 1) as isize)).clone();
-        self.start_call(closure, num_params, self.stack.frame.top - num_params);
+        self.start_call(
+            closure,
+            self.stack.frame.top - num_params,
+            num_params,
+            self.stack.frame.top - num_params,
+        )?;
+        self.callstack
+            .last_mut()
+            .ok_or(Error::RuntimeError("empty callstack".to_string()))?
+            .root = true;
+
         self.stack.pop(num_params);
         Ok(())
         // } else {
@@ -93,6 +144,7 @@ impl Executor {
     fn start_call(
         &mut self,
         closure: Object,
+        target: types::Integer,
         num_params: types::Integer,
         stackbase: types::Integer,
     ) -> Result<()> {
@@ -100,6 +152,8 @@ impl Executor {
             prevframe: self.stack.get_frame(),
             closure: closure.clone(),
             ip: 0,
+            root: false,
+            target: target,
         });
 
         let func = closure.closure()?.func_proto.func_proto()?;
@@ -113,14 +167,15 @@ impl Executor {
         Ok(())
     }
 
-    fn execute(&mut self) -> Result<()> {
-        let ci = self
-            .callstack
-            .last_mut()
-            .ok_or(Error::RuntimeError("callstack empty".to_string()))?;
-
-        let func = ci.closure.closure()?.func_proto.func_proto()?;
+    fn execute(&mut self) -> Result<Object> {
         loop {
+            let ci = self
+                .callstack
+                .last_mut()
+                .ok_or(Error::RuntimeError("callstack empty".to_string()))?;
+
+            let func = ci.closure.closure()?.func_proto.func_proto()?;
+
             let instr = &func.instructions[ci.ip as usize];
             ci.ip += 1;
 
@@ -128,20 +183,31 @@ impl Executor {
                 Error::RuntimeError(format!("unhandled opcode: {:?}", instr)),
             )?;
 
-            match opcode {
+            let state = match opcode {
                 Opcode::LOADINT => {
                     *self.stack.value_mut(instr.arg0 as types::Integer) =
                         Object::Integer(instr.arg1 as types::Integer);
+
+                    LoopState::Continue
                 }
-                Opcode::ADD => {
-                    // case _OP_ADD: _ARITH_(+,TARGET,STK(arg2),STK(arg1)); continue;
+                Opcode::ADD => arith!(+,self, instr),
+                Opcode::SUB => arith!(-,self, instr),
+                Opcode::MUL => arith!(*,self, instr),
+                Opcode::DIV => arith!(/,self, instr),
+
+                Opcode::EQ => {
+                    if instr.arg3 != 0 {
+                        return Err(Error::RuntimeError(
+                            "literal compare not implemented".to_string(),
+                        ));
+                    }
 
                     let op1 = self.stack.value(instr.arg2 as types::Integer);
                     let op2 = self.stack.value(instr.arg1 as types::Integer);
 
                     let res = match (op1, op2) {
                         (Object::Integer(int1), Object::Integer(int2)) => {
-                            Object::Integer(*int1 + *int2)
+                            Object::Bool(*int1 == *int2)
                         }
                         _ => {
                             return Err(Error::RuntimeError(format!(
@@ -151,6 +217,31 @@ impl Executor {
                         }
                     };
                     *self.stack.value_mut(instr.arg0 as types::Integer) = res;
+
+                    LoopState::Continue
+                }
+                Opcode::JZ => {
+                    let cond = self.stack.value(instr.arg0 as types::Integer);
+                    if let Object::Bool(b) = cond {
+                        if !*b {
+                            ci.ip += instr.arg1 as types::Integer;
+                        }
+                    } else {
+                        return Err(Error::RuntimeError(format!(
+                            "unsopported condition in JZ {:?}",
+                            cond
+                        )));
+                    }
+                    LoopState::Continue
+                }
+                Opcode::RETURN => {
+                    let retval = if instr.arg0 == 0xff {
+                        Object::Null
+                    } else {
+                        self.stack.value(instr.arg1 as types::Integer).clone()
+                    };
+
+                    LoopState::LeaveFrame(retval)
                 }
                 _ => {
                     return Err(Error::RuntimeError(format!(
@@ -158,9 +249,22 @@ impl Executor {
                         instr
                     )))
                 }
+            };
+
+            match state {
+                LoopState::LeaveFrame(retval) => {
+                    println!("LeaveFrame");
+                    let root = ci.root;
+                    if !root {
+                        *self.stack.value_mut(ci.target) = retval;
+                        self.callstack.pop();
+                    } else {
+                        return Ok(retval);
+                    }
+                }
+                _ => (),
             }
         }
-        Ok(())
     }
 }
 
@@ -180,5 +284,10 @@ mod tests {
 
         let mut exec = Executor::new();
         exec.stack.push(closure);
+        exec.call(0, false).unwrap();
+        let retval = exec.execute().unwrap();
+        //let ret = exec.stack.pop();
+        println!("{:?}", retval);
+        assert!(retval.integer().unwrap() == 123)
     }
 }

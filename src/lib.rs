@@ -96,6 +96,7 @@ pub mod types {
 pub enum Object {
     Integer(types::Integer),
     Float(types::Float),
+    Bool(bool),
     String(String),
     FuncProto(Rc<object::FuncProto>),
     Closure(Rc<object::Closure>),
@@ -117,6 +118,15 @@ impl Object {
             Object::FuncProto(fp) => Ok(fp.clone()),
             _ => Err(Error::RuntimeError(format!(
                 "expected FuncProto. found {:?}",
+                self
+            ))),
+        }
+    }
+    fn integer(&self) -> Result<types::Integer> {
+        match self {
+            Object::Integer(i) => Ok(i.clone()),
+            _ => Err(Error::RuntimeError(format!(
+                "expected Integer. found {:?}",
                 self
             ))),
         }
