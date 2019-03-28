@@ -1,5 +1,9 @@
 
-if (1+2 == 2) {
+local a = 0;
+for(local i = 0; i < 10; i += 1) {
+ 	a += i;
+}
+if (a == 45) {
 	return 111 * 7 - 666;
 } 
 else {

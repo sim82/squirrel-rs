@@ -1,8 +1,8 @@
 #![allow(dead_code)]
-use crate::bytecode::Opcode;
+use crate::bytecode::{CompOp, Opcode};
 use crate::{object, types, Object};
 use crate::{Error, Result};
-use num_traits;
+use num_traits::FromPrimitive;
 use std::fmt::Display;
 use std::rc::Rc;
 
@@ -234,6 +234,63 @@ impl Executor {
                     }
                     LoopState::Continue
                 }
+                Opcode::JMP => {
+                    let o = ci.ip;
+                    ci.ip += instr.arg1 as types::Integer;
+                    println!("JMP {} {} -> {}", instr.arg1 as types::Integer, o, ci.ip);
+                    LoopState::Continue
+                }
+                Opcode::JCMP => {
+                    let op1 = self.stack.value(instr.arg2 as types::Integer);
+                    let op2 = self.stack.value(instr.arg0 as types::Integer);
+
+                    let r = match (op1, op2) {
+                        (Object::Integer(int1), Object::Integer(int2)) => {
+                            if int1 == int2 {
+                                0
+                            } else if int1 < int2 {
+                                -1
+                            } else {
+                                1
+                            }
+                        }
+                        _ => {
+                            return Err(Error::RuntimeError(format!(
+                                "unhandled operands {:?} {:?}",
+                                op1, op2
+                            )))
+                        }
+                    };
+
+                    let res = match <CompOp as FromPrimitive>::from_u8(instr.arg3) {
+                        Some(CompOp::G) => Object::Bool(r > 0),
+                        Some(CompOp::GE) => Object::Bool(r >= 0),
+                        Some(CompOp::L) => Object::Bool(r < 0),
+                        Some(CompOp::LE) => Object::Bool(r <= 0),
+                        Some(CompOp::_3W) => Object::Integer(r),
+                        _ => {
+                            return Err(Error::RuntimeError(format!(
+                                "unhandled comparison op {:?}",
+                                instr.arg3 as isize,
+                            )))
+                        }
+                    };
+
+                    if let Object::Bool(b) = &res {
+                        if !*b {
+                            ci.ip += instr.arg1 as types::Integer;
+                        }
+                    } else {
+                        return Err(Error::RuntimeError(format!(
+                            "unsopported condition in JZ {:?}",
+                            res
+                        )));
+                    }
+                    // _GUARD(CMP_OP((CmpOP)arg3,STK(arg2),STK(arg0),temp_reg));
+                    // if(IsFalse(temp_reg)) ci->_ip+=(sarg1);
+
+                    LoopState::Continue
+                }
                 Opcode::RETURN => {
                     let retval = if instr.arg0 == 0xff {
                         Object::Null
@@ -288,6 +345,6 @@ mod tests {
         let retval = exec.execute().unwrap();
         //let ret = exec.stack.pop();
         println!("{:?}", retval);
-        assert!(retval.integer().unwrap() == 123)
+        assert!(retval.integer().unwrap() == 111)
     }
 }

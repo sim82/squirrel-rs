@@ -71,9 +71,18 @@ pub enum Opcode {
     CLOSE = 0x3C,
 }
 
+#[derive(FromPrimitive, ToPrimitive, Debug)]
+pub enum CompOp {
+    G = 0,
+    GE = 2,
+    L = 3,
+    LE = 4,
+    _3W = 5,
+}
+
 // #[derive(Debug)]
 pub struct Instruction {
-    pub arg1: u32,
+    pub arg1: i32,
     pub opcode: u8,
     pub arg0: u8,
     pub arg2: u8,
@@ -82,7 +91,7 @@ pub struct Instruction {
 
 impl Instruction {
     pub fn read(rdr: &mut dyn Read) -> Result<Instruction> {
-        let arg1 = rdr.read_u32::<LittleEndian>()?;
+        let arg1 = rdr.read_i32::<LittleEndian>()?;
         let mut buf = [0u8; 4];
         rdr.read(&mut buf)?;
 
