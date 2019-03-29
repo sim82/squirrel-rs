@@ -128,7 +128,7 @@ impl Executor {
         )?;
         self.callstack
             .last_mut()
-            .ok_or(Error::RuntimeError("empty callstack".to_string()))?
+            .ok_or_else(|| Error::RuntimeError("empty callstack".to_string()))?
             .root = true;
 
         self.stack.pop(num_params);
@@ -172,16 +172,15 @@ impl Executor {
             let ci = self
                 .callstack
                 .last_mut()
-                .ok_or(Error::RuntimeError("callstack empty".to_string()))?;
+                .ok_or_else(|| Error::RuntimeError("callstack empty".to_string()))?;
 
             let func = ci.closure.closure()?.func_proto.func_proto()?;
 
             let instr = &func.instructions[ci.ip as usize];
             ci.ip += 1;
 
-            let opcode = <Opcode as num_traits::FromPrimitive>::from_u8(instr.opcode).ok_or(
-                Error::RuntimeError(format!("unhandled opcode: {:?}", instr)),
-            )?;
+            let opcode = <Opcode as num_traits::FromPrimitive>::from_u8(instr.opcode)
+                .ok_or_else(|| Error::RuntimeError(format!("unhandled opcode: {:?}", instr)))?;
 
             let state = match opcode {
                 Opcode::LOADINT => {
@@ -194,6 +193,7 @@ impl Executor {
                 Opcode::SUB => arith!(-,self, instr),
                 Opcode::MUL => arith!(*,self, instr),
                 Opcode::DIV => arith!(/,self, instr),
+                Opcode::MOD => arith!(%,self, instr),
 
                 Opcode::EQ => {
                     if instr.arg3 != 0 {
@@ -237,7 +237,7 @@ impl Executor {
                 Opcode::JMP => {
                     let o = ci.ip;
                     ci.ip += instr.arg1 as types::Integer;
-                    println!("JMP {} {} -> {}", instr.arg1 as types::Integer, o, ci.ip);
+                    // println!("JMP {} {} -> {}", instr.arg1 as types::Integer, o, ci.ip);
                     LoopState::Continue
                 }
                 Opcode::JCMP => {
@@ -345,6 +345,6 @@ mod tests {
         let retval = exec.execute().unwrap();
         //let ret = exec.stack.pop();
         println!("{:?}", retval);
-        assert!(retval.integer().unwrap() == 111)
+        assert_eq!(retval.integer().unwrap(), 111)
     }
 }
