@@ -1,7 +1,16 @@
 use super::{bytecode, types, Object};
+use std::collections::HashMap;
 #[derive(Debug)]
 pub struct Closure {
     pub func_proto: Object,
+}
+
+impl Closure {
+    pub fn new(func_proto: Object) -> Self {
+        Closure {
+            func_proto: func_proto,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -19,4 +28,17 @@ pub struct FuncProto {
     pub functions: Vec<Object>,
 
     pub stacksize: types::Integer,
+}
+
+#[derive(Debug)]
+pub struct Table {
+    pub map: HashMap<Object, Object>,
+}
+
+impl Table {
+    pub fn new() -> Self {
+        Table {
+            map: HashMap::new(),
+        }
+    }
 }

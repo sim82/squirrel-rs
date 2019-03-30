@@ -100,6 +100,7 @@ pub enum Object {
     String(String),
     FuncProto(Rc<object::FuncProto>),
     Closure(Rc<object::Closure>),
+    Table(Rc<object::Table>),
     Null,
 }
 
@@ -131,4 +132,55 @@ impl Object {
             ))),
         }
     }
+    fn table(&self) -> Result<Rc<object::Table>> {
+        match self {
+            Object::Table(t) => Ok(t.clone()),
+            _ => Err(Error::RuntimeError(format!(
+                "expected table. found {:?}",
+                self
+            ))),
+        }
+    }
+    // fn table_mut(&mut self) -> Result<Rc<object::Table>> {
+    //     match self {
+    //         Object::Table(t) => Ok(t.clone()),
+    //         _ => Err(Error::RuntimeError(format!(
+    //             "expected table. found {:?}",
+    //             self
+    //         ))),
+    //     }
+    // }
 }
+
+impl std::hash::Hash for Object {
+    fn hash<H: std::hash::Hasher>(&self, hasher: &mut H) {
+        match self {
+            Object::Integer(int) => int.hash(hasher),
+            Object::Bool(b) => b.hash(hasher),
+            Object::String(str) => str.hash(hasher),
+            _ => panic!("hash not implemented for {:?}", self),
+        }
+    }
+}
+
+impl std::cmp::PartialEq for Object {
+    fn eq(&self, rhs: &Self) -> bool {
+        match (self, rhs) {
+            (Object::Integer(i1), Object::Integer(i2)) => i1.eq(i2),
+            (Object::String(s1), Object::String(s2)) => s1.eq(s2),
+            (Object::Bool(b1), Object::Bool(b2)) => b1.eq(b2),
+            (_, _) => false,
+        }
+    }
+}
+impl std::cmp::Eq for Object {}
+// impl std::cmp::Eq for Object {
+//     fn eq(&self, rhs: &Self) -> bool {
+//         match (self, rhs) {
+//             (Object::Integer(i1), Object::Integer(i2)) => i1.eq(i2),
+//             (Object::String(s1), Object::String(s2)) => s1.eq(s2),
+//             (Object::Bool(b1), Object::Bool(b2)) => b1.eq(b2),
+//             (_, _) => false,
+//         }
+//     }
+// }

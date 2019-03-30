@@ -1,7 +1,13 @@
 
+function test() {
+	return 666;
+}
+
+
 local a = 0;
 // for(local i = 0; i < 100000000; i += 1) {
-for(local i = 0; i < 10000000; i += 1) {
+// for(local i = 0; i < 10000000; i += 1) {
+for(local i = 0; i < 100000; i += 1) {
 // for(local i = 0; i < 100; i += 1) {
 	if (i % 2 == 0) {
  		a += i;
@@ -26,8 +32,5 @@ else {
 #  }
 #}
 #
-#function test() {
-#	return 666;
-#}
 #
 #factorial(10)

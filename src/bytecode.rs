@@ -6,7 +6,7 @@ use num_traits::{FromPrimitive, ToPrimitive};
 use std::fmt::Formatter;
 use std::io::Read;
 
-#[derive(FromPrimitive, ToPrimitive, Debug)]
+#[derive(FromPrimitive, ToPrimitive, Debug, PartialEq, Eq, Hash)]
 pub enum Opcode {
     LINE = 0x00,
     LOAD = 0x01,

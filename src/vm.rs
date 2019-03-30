@@ -1,8 +1,9 @@
 #![allow(dead_code)]
 use crate::bytecode::{CompOp, Opcode};
-use crate::{object, types, Object};
+use crate::{bytecode, object, types, Object};
 use crate::{Error, Result};
 use num_traits::FromPrimitive;
+use std::collections::HashMap;
 use std::fmt::Display;
 use std::rc::Rc;
 
@@ -67,6 +68,35 @@ impl Stack {
         self.stack[self.frame.top as usize] = obj;
         self.frame.top += 1;
     }
+
+    fn set_target(&mut self, instr: &bytecode::Instruction, value: Object) {
+        *self.value_mut(instr.arg0 as types::Integer) = value;
+    }
+    fn get_arg0(&self, instr: &bytecode::Instruction) -> &Object {
+        self.value(instr.arg0 as types::Integer)
+    }
+    fn get_arg1(&self, instr: &bytecode::Instruction) -> &Object {
+        self.value(instr.arg1 as types::Integer)
+    }
+    fn get_arg2(&self, instr: &bytecode::Instruction) -> &Object {
+        self.value(instr.arg2 as types::Integer)
+    }
+    fn get_arg3(&self, instr: &bytecode::Instruction) -> &Object {
+        self.value(instr.arg3 as types::Integer)
+    }
+
+    fn get_arg0_mut(&mut self, instr: &bytecode::Instruction) -> &mut Object {
+        self.value_mut(instr.arg0 as types::Integer)
+    }
+    fn get_arg1_mut(&mut self, instr: &bytecode::Instruction) -> &mut Object {
+        self.value_mut(instr.arg1 as types::Integer)
+    }
+    fn get_arg2_mut(&mut self, instr: &bytecode::Instruction) -> &mut Object {
+        self.value_mut(instr.arg2 as types::Integer)
+    }
+    fn get_arg3_mut(&mut self, instr: &bytecode::Instruction) -> &mut Object {
+        self.value_mut(instr.arg3 as types::Integer)
+    }
 }
 
 #[derive(Clone)]
@@ -80,9 +110,33 @@ struct CallInfo {
     target: types::Integer,
 }
 
+struct Profiling {
+    op_count: HashMap<bytecode::Opcode, usize>,
+}
+
+impl Profiling {
+    fn new() -> Profiling {
+        Profiling {
+            op_count: HashMap::new(),
+        }
+    }
+    fn instruction(&mut self, instr: &bytecode::Instruction) {
+        if let Some(opcode) = <bytecode::Opcode as FromPrimitive>::from_u8(instr.opcode) {
+            *self.op_count.entry(opcode).or_insert(0) += 1;
+        }
+    }
+    fn print(&self) {
+        for (key, val) in self.op_count.iter() {
+            println!("{:?}: {}", key, val);
+        }
+    }
+}
+
 struct Executor {
     stack: Stack,
     callstack: Vec<CallInfo>,
+    roottable: Object,
+    profiling: Profiling,
 }
 
 enum LoopState {
@@ -93,8 +147,8 @@ enum LoopState {
 macro_rules! arith {
     ($op:tt, $self:expr, $instr:expr) => {
         {
-        let op1 = $self.stack.value($instr.arg2 as types::Integer);
-        let op2 = $self.stack.value($instr.arg1 as types::Integer);
+        let op1 = $self.stack.get_arg2($instr);
+        let op2 = $self.stack.get_arg1($instr);
 
         let res = match (op1, op2) {
             (Object::Integer(int1), Object::Integer(int2)) => Object::Integer(*int1 $op *int2),
@@ -105,7 +159,7 @@ macro_rules! arith {
                 )))
             }
         };
-        *$self.stack.value_mut($instr.arg0 as types::Integer) = res;
+        $self.stack.set_target($instr, res);
         LoopState::Continue
     }};
 }
@@ -115,10 +169,13 @@ impl Executor {
         Executor {
             stack: Stack::new(),
             callstack: Vec::new(),
+            profiling: Profiling::new(),
+            roottable: Object::Table(Rc::new(object::Table::new())),
         }
     }
 
     fn call(&mut self, num_params: types::Integer, retval: bool) -> Result<()> {
+        // self.stack.push(self.roottable.clone());
         let closure = self.stack.up(-((num_params + 1) as isize)).clone();
         self.start_call(
             closure,
@@ -182,11 +239,19 @@ impl Executor {
             let opcode = <Opcode as num_traits::FromPrimitive>::from_u8(instr.opcode)
                 .ok_or_else(|| Error::RuntimeError(format!("unhandled opcode: {:?}", instr)))?;
 
+            self.profiling.instruction(instr);
+
             let state = match opcode {
                 Opcode::LOADINT => {
-                    *self.stack.value_mut(instr.arg0 as types::Integer) =
-                        Object::Integer(instr.arg1 as types::Integer);
+                    // *self.stack.value_mut(instr.arg0 as types::Integer) =
+                    self.stack
+                        .set_target(instr, Object::Integer(instr.arg1 as types::Integer));
 
+                    LoopState::Continue
+                }
+                Opcode::LOAD => {
+                    *self.stack.value_mut(instr.arg0 as types::Integer) =
+                        func.literals[instr.arg1 as usize].clone();
                     LoopState::Continue
                 }
                 Opcode::ADD => arith!(+,self, instr),
@@ -202,8 +267,8 @@ impl Executor {
                         ));
                     }
 
-                    let op1 = self.stack.value(instr.arg2 as types::Integer);
-                    let op2 = self.stack.value(instr.arg1 as types::Integer);
+                    let op1 = self.stack.get_arg2(instr);
+                    let op2 = self.stack.get_arg1(instr);
 
                     let res = match (op1, op2) {
                         (Object::Integer(int1), Object::Integer(int2)) => {
@@ -216,12 +281,12 @@ impl Executor {
                             )))
                         }
                     };
-                    *self.stack.value_mut(instr.arg0 as types::Integer) = res;
+                    self.stack.set_target(instr, res);
 
                     LoopState::Continue
                 }
                 Opcode::JZ => {
-                    let cond = self.stack.value(instr.arg0 as types::Integer);
+                    let cond = self.stack.get_arg0(instr);
                     if let Object::Bool(b) = cond {
                         if !*b {
                             ci.ip += instr.arg1 as types::Integer;
@@ -235,14 +300,13 @@ impl Executor {
                     LoopState::Continue
                 }
                 Opcode::JMP => {
-                    let o = ci.ip;
                     ci.ip += instr.arg1 as types::Integer;
                     // println!("JMP {} {} -> {}", instr.arg1 as types::Integer, o, ci.ip);
                     LoopState::Continue
                 }
                 Opcode::JCMP => {
-                    let op1 = self.stack.value(instr.arg2 as types::Integer);
-                    let op2 = self.stack.value(instr.arg0 as types::Integer);
+                    let op1 = self.stack.get_arg2(instr);
+                    let op2 = self.stack.get_arg0(instr);
 
                     let r = match (op1, op2) {
                         (Object::Integer(int1), Object::Integer(int2)) => {
@@ -295,10 +359,38 @@ impl Executor {
                     let retval = if instr.arg0 == 0xff {
                         Object::Null
                     } else {
-                        self.stack.value(instr.arg1 as types::Integer).clone()
+                        self.stack.get_arg1(instr).clone()
                     };
 
                     LoopState::LeaveFrame(retval)
+                }
+                Opcode::CLOSURE => {
+                    let new_func = func.functions[instr.arg1 as usize].clone();
+                    let new_closure = object::Closure::new(new_func);
+                    self.stack
+                        .set_target(instr, Object::Closure(Rc::new(new_closure)));
+                    LoopState::Continue
+                    // if(!CLOSURE_OP(TARGET,fp->_functions[arg1]._unVal.pFunctionProto)) { SQ_THROW(); }
+                }
+                Opcode::NEWSLOT => {
+                    // return Err(Error::RuntimeError(format!(
+                    //     "newslot: {:?} {:?} {:?} {}",
+                    //     self.stack.get_arg1(instr),
+                    //     self.stack.get_arg2(instr),
+                    //     self.stack.get_arg3(instr),
+                    //     instr.arg0 as usize
+                    // )));
+
+                    let mut table = self.stack.get_arg1_mut(instr).table()?;
+                    let key = self.stack.get_arg2(instr);
+                    let value = self.stack.get_arg3(instr);
+
+                    Rc::get_mut(&mut table)
+                        .unwrap()
+                        .map
+                        .insert(key.clone(), value.clone());
+                    LoopState::Continue
+                    // NewSlotA(STK(arg1),STK(arg2),STK(arg3),(arg0&NEW_SLOT_ATTRIBUTES_FLAG) ? STK(arg2-1) : SQObjectPtr(),(arg0&NEW_SLOT_STATIC_FLAG)?true:false,false));
                 }
                 _ => {
                     return Err(Error::RuntimeError(format!(
@@ -350,6 +442,7 @@ mod tests {
         let retval = exec.execute().unwrap();
         //let ret = exec.stack.pop();
         println!("{:?}", retval);
+        exec.profiling.print();
         assert_eq!(retval.integer().unwrap(), 111)
     }
 }

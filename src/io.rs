@@ -74,9 +74,7 @@ pub fn read_closure(rdr: &mut dyn Read) -> Result<Object> {
     let func_proto = read_funcproto(rdr)?;
     expect_tag(rdr, FileTags::ClosurestreamTail)?;
 
-    let closure = object::Closure {
-        func_proto: func_proto,
-    };
+    let closure = object::Closure::new(func_proto);
     Ok(Object::Closure(Rc::new(closure)))
 }
 
