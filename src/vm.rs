@@ -168,14 +168,14 @@ impl Executor {
     }
 
     fn execute(&mut self) -> Result<Object> {
+        let mut ci = self
+            .callstack
+            .last_mut()
+            .ok_or_else(|| Error::RuntimeError("callstack empty".to_string()))?;
+
+        let mut func = ci.closure.closure()?.func_proto.func_proto()?;
+
         loop {
-            let ci = self
-                .callstack
-                .last_mut()
-                .ok_or_else(|| Error::RuntimeError("callstack empty".to_string()))?;
-
-            let func = ci.closure.closure()?.func_proto.func_proto()?;
-
             let instr = &func.instructions[ci.ip as usize];
             ci.ip += 1;
 
@@ -315,6 +315,11 @@ impl Executor {
                     if !root {
                         *self.stack.value_mut(ci.target) = retval;
                         self.callstack.pop();
+                        ci = self
+                            .callstack
+                            .last_mut()
+                            .ok_or_else(|| Error::RuntimeError("callstack empty".to_string()))?;
+                        func = ci.closure.closure()?.func_proto.func_proto()?;
                     } else {
                         return Ok(retval);
                     }
