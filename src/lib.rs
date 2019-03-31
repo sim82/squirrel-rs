@@ -107,12 +107,22 @@ pub enum Object {
 }
 
 impl Object {
+    fn string(&self) -> Result<&str> {
+        match self {
+            Object::String(str) => Ok(&str[..]),
+            _ => Err(Error::RuntimeError(format!(
+                "expected string. found {}",
+                self.type_name()
+            ))),
+        }
+    }
+
     fn closure(&self) -> Result<Rc<object::Closure>> {
         match self {
             Object::Closure(closure) => Ok(closure.clone()),
             _ => Err(Error::RuntimeError(format!(
-                "expected closure. found {:?}",
-                self
+                "expected closure. found {}",
+                self.type_name()
             ))),
         }
     }
@@ -120,8 +130,8 @@ impl Object {
         match self {
             Object::FuncProto(fp) => Ok(fp.clone()),
             _ => Err(Error::RuntimeError(format!(
-                "expected FuncProto. found {:?}",
-                self
+                "expected FuncProto. found {}",
+                self.type_name()
             ))),
         }
     }
@@ -129,8 +139,8 @@ impl Object {
         match self {
             Object::Integer(i) => Ok(i.clone()),
             _ => Err(Error::RuntimeError(format!(
-                "expected Integer. found {:?}",
-                self
+                "expected Integer. found {}",
+                self.type_name()
             ))),
         }
     }
@@ -138,8 +148,8 @@ impl Object {
         match self {
             Object::Table(t) => Ok(t.borrow()),
             _ => Err(Error::RuntimeError(format!(
-                "expected table. found {:?}",
-                self
+                "expected table. found {}",
+                self.type_name()
             ))),
         }
     }
@@ -183,8 +193,8 @@ impl std::fmt::Display for Object {
             Object::Bool(b) => write!(fmt, "bool({})", b),
             Object::Float(f) => write!(fmt, "float({})", f),
             Object::String(s) => write!(fmt, "string({})", s),
-            Object::FuncProto(_) => write!(fmt, "func_proto"),
-            Object::Closure(_) => write!(fmt, "closure"),
+            Object::FuncProto(func) => write!(fmt, "func_proto({})", func.name.string().unwrap()), // TODO: map to fmt error
+            Object::Closure(closure) => write!(fmt, "closure({})", closure.func_proto),
             Object::Table(_) => write!(fmt, "table"),
             Object::Null => write!(fmt, "null"),
         }

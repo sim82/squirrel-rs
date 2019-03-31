@@ -30,6 +30,21 @@ pub struct FuncProto {
     pub stacksize: types::Integer,
 }
 
+impl FuncProto {
+    pub fn print_disassembly(&self, indent: &str) {
+        println!("{}function {} {}", indent, self.source_name, self.name);
+        for (i, inst) in self.instructions.iter().enumerate() {
+            println!("{}  {} {:?}", indent, i, inst);
+        }
+
+        for f in &self.functions {
+            if let Object::FuncProto(func) = f {
+                func.print_disassembly(&format!("{}  ", indent)[..]);
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Table {
     pub map: HashMap<Object, Object>,

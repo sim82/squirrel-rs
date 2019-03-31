@@ -102,7 +102,8 @@ impl Stack {
         self.value_mut(instr.arg3 as types::Integer)
     }
 
-    fn print_compact(&self) {
+    fn print_compact(&self, info: &str) {
+        println!(" --- {}", info);
         for i in 0..=self.frame.top {
             let extra = if i == self.frame.top {
                 " <- top"
@@ -114,6 +115,7 @@ impl Stack {
 
             println!("{}: {}{}", i, self.stack[i as usize], extra);
         }
+        println!(" ---");
     }
 }
 
@@ -155,6 +157,8 @@ struct Executor {
     callstack: Vec<CallInfo>,
     roottable: Object,
     profiling: Profiling,
+    trace_call_return: bool,
+    instr_profiling: bool,
 }
 
 #[derive(Debug)]
@@ -191,6 +195,8 @@ impl Executor {
             callstack: Vec::new(),
             profiling: Profiling::new(),
             roottable: Object::Table(Rc::new(RefCell::new(object::Table::new()))),
+            trace_call_return: false,
+            instr_profiling: false,
         }
     }
 
@@ -258,8 +264,9 @@ impl Executor {
             let opcode = <Opcode as num_traits::FromPrimitive>::from_u8(instr.opcode)
                 .ok_or_else(|| Error::RuntimeError(format!("unhandled opcode: {:?}", instr)))?;
 
-            self.profiling.instruction(instr);
-
+            if self.instr_profiling {
+                self.profiling.instruction(instr);
+            }
             let state = match opcode {
                 Opcode::LOADINT => {
                     // *self.stack.value_mut(instr.arg0 as types::Integer) =
@@ -421,7 +428,7 @@ impl Executor {
                     self.stack.set_arg3(instr, o.clone());
                     self.stack.set_target(instr, tmp.clone());
 
-                    self.stack.print_compact();
+                    // self.stack.print_compact();
                     LoopState::Continue
                 }
                 Opcode::CALL => LoopState::Call(
@@ -436,8 +443,8 @@ impl Executor {
                     } else {
                         self.stack.get_arg1(instr).clone()
                     };
-                    println!("return: {}", instr.arg1);
-                    self.stack.print_compact();
+                    // println!("return: {}", instr.arg1);
+                    // self.stack.print_compact();
                     LoopState::LeaveFrame(retval)
                 }
                 _ => {
@@ -449,37 +456,17 @@ impl Executor {
             };
 
             match state {
-                LoopState::LeaveFrame(retval) => {
-                    println!("LeaveFrame {:?} -> {}", retval, ci.target);
-                    let root = ci.root;
-                    if !root {
-                        let target = ci.target;
-
-                        self.callstack.pop();
-                        ci = self
-                            .callstack
-                            .last_mut()
-                            .ok_or_else(|| Error::RuntimeError("callstack empty".to_string()))?;
-
-                        self.stack.set_frame(ci.prevframe);
-                        *self.stack.value_mut(target) = retval;
-
-                        self.stack.print_compact();
-
-                        func = ci.closure.closure()?.func_proto.func_proto()?;
-                    } else {
-                        return Ok(retval);
-                    }
-                }
                 LoopState::Call(closure, target, num_args, stack_inc) => {
-                    // println!(
-                    //     "call {} {} {} {}",
-                    //     closure.type_name(),
-                    //     target,
-                    //     num_args,
-                    //     stack_inc
-                    // );
-                    // self.stack.print_compact();
+                    if self.trace_call_return {
+                        println!(
+                            "call {} {} {} {}",
+                            closure,
+                            self.stack.frame.base + target,
+                            num_args,
+                            self.stack.frame.base + stack_inc
+                        );
+                        self.stack.print_compact("before call");
+                    }
                     let new_base = self.stack.frame.base + stack_inc;
                     self.start_call(closure, target, num_args, new_base)?;
                     ci = self
@@ -487,7 +474,42 @@ impl Executor {
                         .last_mut()
                         .ok_or_else(|| Error::RuntimeError("callstack empty".to_string()))?;
                     func = ci.closure.closure()?.func_proto.func_proto()?;
+
+                    if self.trace_call_return {
+                        self.stack.print_compact("after call");
+                    }
                 }
+                LoopState::LeaveFrame(retval) => {
+                    if self.trace_call_return {
+                        println!("LeaveFrame {:?} -> {}", retval, ci.target);
+                    }
+                    let root = ci.root;
+                    if !root {
+                        let target = ci.target;
+
+                        if self.trace_call_return {
+                            self.stack.print_compact("before return");
+                        }
+                        self.stack.set_frame(ci.prevframe);
+
+                        self.callstack.pop();
+                        ci = self
+                            .callstack
+                            .last_mut()
+                            .ok_or_else(|| Error::RuntimeError("callstack empty".to_string()))?;
+
+                        *self.stack.value_mut(target) = retval;
+
+                        if self.trace_call_return {
+                            self.stack.print_compact("after return");
+                        }
+
+                        func = ci.closure.closure()?.func_proto.func_proto()?;
+                    } else {
+                        return Ok(retval);
+                    }
+                }
+
                 _ => (),
             }
         }
@@ -509,15 +531,28 @@ mod tests {
     fn load_closure() {
         let mut bc = &include_bytes!("out.cnut")[..];
         let closure = read_closure(&mut bc).unwrap();
-        println!("{:?}", closure);
+
+        closure
+            .closure()
+            .unwrap()
+            .func_proto
+            .func_proto()
+            .unwrap()
+            .print_disassembly("");
+        // println!("{:?}", closure);
         // assert!(false);
 
         let mut exec = Executor::new();
+        // #[cfg(debug)]
+        {
+            exec.instr_profiling = true;
+        }
+
         exec.stack.push(closure);
         exec.push_roottable();
         let mut num_args = 1;
 
-        exec.stack.print_compact();
+        exec.stack.print_compact("initial");
 
         exec.call(num_args, false).unwrap();
         let retval = exec.execute().unwrap();
