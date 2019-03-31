@@ -1,5 +1,7 @@
 use num_derive::{FromPrimitive, ToPrimitive};
+use std::cell::{Ref, RefCell, RefMut};
 use std::rc::Rc;
+
 // use num_traits::FromPrimitive;
 
 pub mod bytecode;
@@ -100,7 +102,7 @@ pub enum Object {
     String(String),
     FuncProto(Rc<object::FuncProto>),
     Closure(Rc<object::Closure>),
-    Table(Rc<object::Table>),
+    Table(Rc<RefCell<object::Table>>),
     Null,
 }
 
@@ -132,13 +134,35 @@ impl Object {
             ))),
         }
     }
-    fn table(&self) -> Result<Rc<object::Table>> {
+    fn table(&self) -> Result<Ref<object::Table>> {
         match self {
-            Object::Table(t) => Ok(t.clone()),
+            Object::Table(t) => Ok(t.borrow()),
             _ => Err(Error::RuntimeError(format!(
                 "expected table. found {:?}",
                 self
             ))),
+        }
+    }
+    fn table_mut(&mut self) -> Result<RefMut<object::Table>> {
+        match self {
+            Object::Table(t) => Ok(t.borrow_mut()),
+            _ => Err(Error::RuntimeError(format!(
+                "expected table. found {:?}",
+                self
+            ))),
+        }
+    }
+
+    fn type_name(&self) -> &'static str {
+        match self {
+            Object::Integer(_) => "int",
+            Object::Bool(_) => "bool",
+            Object::Float(_) => "float",
+            Object::String(_) => "string",
+            Object::FuncProto(_) => "func_proto",
+            Object::Closure(_) => "closure",
+            Object::Table(_) => "table",
+            Object::Null => "null",
         }
     }
     // fn table_mut(&mut self) -> Result<Rc<object::Table>> {
@@ -150,6 +174,21 @@ impl Object {
     //         ))),
     //     }
     // }
+}
+
+impl std::fmt::Display for Object {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Object::Integer(i) => write!(fmt, "int({})", i),
+            Object::Bool(b) => write!(fmt, "bool({})", b),
+            Object::Float(f) => write!(fmt, "float({})", f),
+            Object::String(s) => write!(fmt, "string({})", s),
+            Object::FuncProto(_) => write!(fmt, "func_proto"),
+            Object::Closure(_) => write!(fmt, "closure"),
+            Object::Table(_) => write!(fmt, "table"),
+            Object::Null => write!(fmt, "null"),
+        }
+    }
 }
 
 impl std::hash::Hash for Object {

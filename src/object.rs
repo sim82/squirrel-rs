@@ -30,7 +30,7 @@ pub struct FuncProto {
     pub stacksize: types::Integer,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Table {
     pub map: HashMap<Object, Object>,
 }

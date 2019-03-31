@@ -3,6 +3,7 @@ use crate::bytecode::{CompOp, Opcode};
 use crate::{bytecode, object, types, Object};
 use crate::{Error, Result};
 use num_traits::FromPrimitive;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::rc::Rc;
@@ -69,6 +70,9 @@ impl Stack {
         self.frame.top += 1;
     }
 
+    fn set_arg3(&mut self, instr: &bytecode::Instruction, value: Object) {
+        *self.value_mut(instr.arg3 as types::Integer) = value;
+    }
     fn set_target(&mut self, instr: &bytecode::Instruction, value: Object) {
         *self.value_mut(instr.arg0 as types::Integer) = value;
     }
@@ -96,6 +100,20 @@ impl Stack {
     }
     fn get_arg3_mut(&mut self, instr: &bytecode::Instruction) -> &mut Object {
         self.value_mut(instr.arg3 as types::Integer)
+    }
+
+    fn print_compact(&self) {
+        for i in 0..=self.frame.top {
+            let extra = if i == self.frame.top {
+                " <- top"
+            } else if i == self.frame.base {
+                " <- base"
+            } else {
+                ""
+            };
+
+            println!("{}: {}{}", i, self.stack[i as usize], extra);
+        }
     }
 }
 
@@ -139,9 +157,11 @@ struct Executor {
     profiling: Profiling,
 }
 
+#[derive(Debug)]
 enum LoopState {
     Continue,
     LeaveFrame(Object),
+    Call(Object, types::Integer, types::Integer, types::Integer),
 }
 
 macro_rules! arith {
@@ -170,12 +190,11 @@ impl Executor {
             stack: Stack::new(),
             callstack: Vec::new(),
             profiling: Profiling::new(),
-            roottable: Object::Table(Rc::new(object::Table::new())),
+            roottable: Object::Table(Rc::new(RefCell::new(object::Table::new()))),
         }
     }
 
     fn call(&mut self, num_params: types::Integer, retval: bool) -> Result<()> {
-        // self.stack.push(self.roottable.clone());
         let closure = self.stack.up(-((num_params + 1) as isize)).clone();
         self.start_call(
             closure,
@@ -355,15 +374,7 @@ impl Executor {
 
                     LoopState::Continue
                 }
-                Opcode::RETURN => {
-                    let retval = if instr.arg0 == 0xff {
-                        Object::Null
-                    } else {
-                        self.stack.get_arg1(instr).clone()
-                    };
 
-                    LoopState::LeaveFrame(retval)
-                }
                 Opcode::CLOSURE => {
                     let new_func = func.functions[instr.arg1 as usize].clone();
                     let new_closure = object::Closure::new(new_func);
@@ -373,24 +384,61 @@ impl Executor {
                     // if(!CLOSURE_OP(TARGET,fp->_functions[arg1]._unVal.pFunctionProto)) { SQ_THROW(); }
                 }
                 Opcode::NEWSLOT => {
-                    // return Err(Error::RuntimeError(format!(
+                    // println!(
                     //     "newslot: {:?} {:?} {:?} {}",
                     //     self.stack.get_arg1(instr),
                     //     self.stack.get_arg2(instr),
                     //     self.stack.get_arg3(instr),
                     //     instr.arg0 as usize
-                    // )));
+                    // );
 
-                    let mut table = self.stack.get_arg1_mut(instr).table()?;
-                    let key = self.stack.get_arg2(instr);
-                    let value = self.stack.get_arg3(instr);
+                    // println!("{} {} {}", instr.arg1, instr.arg2, instr.arg3);
+                    // println!("arg1: {}\n{:?}", instr.arg1, self.stack);
 
-                    Rc::get_mut(&mut table)
-                        .unwrap()
-                        .map
-                        .insert(key.clone(), value.clone());
+                    // self.stack.print_compact();
+
+                    let key = self.stack.get_arg2(instr).clone();
+                    let value = self.stack.get_arg3(instr).clone();
+
+                    let mut table = self.stack.get_arg1_mut(instr).table_mut()?;
+                    table.map.insert(key, value);
+
                     LoopState::Continue
                     // NewSlotA(STK(arg1),STK(arg2),STK(arg3),(arg0&NEW_SLOT_ATTRIBUTES_FLAG) ? STK(arg2-1) : SQObjectPtr(),(arg0&NEW_SLOT_STATIC_FLAG)?true:false,false));
+                }
+                Opcode::PREPCALLK | Opcode::PREPCALL => {
+                    let key = if opcode == Opcode::PREPCALLK {
+                        func.literals[instr.arg1 as usize].clone()
+                    } else {
+                        self.stack.get_arg1(instr).clone()
+                    };
+                    let o = self.stack.get_arg2(instr).clone();
+                    let table = o.table()?;
+
+                    let tmp = table.map.get(&key).ok_or_else(|| {
+                        Error::RuntimeError(format!("key {:?} not found in table", key))
+                    })?;
+                    self.stack.set_arg3(instr, o.clone());
+                    self.stack.set_target(instr, tmp.clone());
+
+                    self.stack.print_compact();
+                    LoopState::Continue
+                }
+                Opcode::CALL => LoopState::Call(
+                    self.stack.get_arg1(instr).clone(),
+                    instr.arg0 as types::Integer,
+                    instr.arg3 as types::Integer,
+                    instr.arg2 as types::Integer,
+                ),
+                Opcode::RETURN => {
+                    let retval = if instr.arg0 == 0xff {
+                        Object::Null
+                    } else {
+                        self.stack.get_arg1(instr).clone()
+                    };
+                    println!("return: {}", instr.arg1);
+                    self.stack.print_compact();
+                    LoopState::LeaveFrame(retval)
                 }
                 _ => {
                     return Err(Error::RuntimeError(format!(
@@ -402,23 +450,51 @@ impl Executor {
 
             match state {
                 LoopState::LeaveFrame(retval) => {
-                    println!("LeaveFrame");
+                    println!("LeaveFrame {:?} -> {}", retval, ci.target);
                     let root = ci.root;
                     if !root {
-                        *self.stack.value_mut(ci.target) = retval;
+                        let target = ci.target;
+
                         self.callstack.pop();
                         ci = self
                             .callstack
                             .last_mut()
                             .ok_or_else(|| Error::RuntimeError("callstack empty".to_string()))?;
+
+                        self.stack.set_frame(ci.prevframe);
+                        *self.stack.value_mut(target) = retval;
+
+                        self.stack.print_compact();
+
                         func = ci.closure.closure()?.func_proto.func_proto()?;
                     } else {
                         return Ok(retval);
                     }
                 }
+                LoopState::Call(closure, target, num_args, stack_inc) => {
+                    // println!(
+                    //     "call {} {} {} {}",
+                    //     closure.type_name(),
+                    //     target,
+                    //     num_args,
+                    //     stack_inc
+                    // );
+                    // self.stack.print_compact();
+                    let new_base = self.stack.frame.base + stack_inc;
+                    self.start_call(closure, target, num_args, new_base)?;
+                    ci = self
+                        .callstack
+                        .last_mut()
+                        .ok_or_else(|| Error::RuntimeError("callstack empty".to_string()))?;
+                    func = ci.closure.closure()?.func_proto.func_proto()?;
+                }
                 _ => (),
             }
         }
+    }
+
+    fn push_roottable(&mut self) {
+        self.stack.push(self.roottable.clone());
     }
 }
 
@@ -438,7 +514,12 @@ mod tests {
 
         let mut exec = Executor::new();
         exec.stack.push(closure);
-        exec.call(0, false).unwrap();
+        exec.push_roottable();
+        let mut num_args = 1;
+
+        exec.stack.print_compact();
+
+        exec.call(num_args, false).unwrap();
         let retval = exec.execute().unwrap();
         //let ret = exec.stack.pop();
         println!("{:?}", retval);
