@@ -166,6 +166,11 @@ enum LoopState {
     Continue,
     LeaveFrame(Object),
     Call(Object, types::Integer, types::Integer, types::Integer),
+    TailCall {
+        closure: Object,
+        num_args: types::Integer,
+        arg_offset: types::Integer,
+    },
 }
 
 macro_rules! arith {
@@ -444,6 +449,11 @@ impl Executor {
                     instr.arg3 as types::Integer,
                     instr.arg2 as types::Integer,
                 ),
+                Opcode::TAILCALL => LoopState::TailCall {
+                    closure: self.stack.get_arg1(instr).clone(),
+                    num_args: instr.arg3 as types::Integer,
+                    arg_offset: instr.arg2 as types::Integer,
+                },
                 Opcode::RETURN => {
                     let retval = if instr.arg0 == 0xff {
                         Object::Null
@@ -486,6 +496,11 @@ impl Executor {
                         self.stack.print_compact("after call");
                     }
                 }
+                LoopState::TailCall {
+                    closure,
+                    num_args,
+                    arg_offset,
+                } => {}
                 LoopState::LeaveFrame(retval) => {
                     if self.trace_call_return {
                         println!("LeaveFrame {:?} -> {}", retval, ci.target);
