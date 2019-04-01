@@ -15,7 +15,7 @@ struct StackFrame {
 }
 
 #[derive(Debug)]
-struct Stack {
+pub struct Stack {
     stack: Vec<Object>,
     frame: StackFrame,
 }
@@ -61,11 +61,11 @@ impl Stack {
         self.frame = frame;
     }
 
-    fn pop(&mut self, num: types::Integer) {
+    pub fn pop(&mut self, num: types::Integer) {
         self.frame.top -= num;
     }
 
-    fn push(&mut self, obj: Object) {
+    pub fn push(&mut self, obj: Object) {
         self.stack[self.frame.top as usize] = obj;
         self.frame.top += 1;
     }
@@ -102,7 +102,7 @@ impl Stack {
         self.value_mut(instr.arg3 as types::Integer)
     }
 
-    fn print_compact(&self, info: &str) {
+    pub fn print_compact(&self, info: &str) {
         println!(" --- {}", info);
         for i in 0..=self.frame.top {
             let extra = if i == self.frame.top {
@@ -152,13 +152,13 @@ impl Profiling {
     }
 }
 
-struct Executor {
+pub struct Executor {
     stack: Stack,
     callstack: Vec<CallInfo>,
     roottable: Object,
     profiling: Profiling,
-    trace_call_return: bool,
-    instr_profiling: bool,
+    pub trace_call_return: bool,
+    pub instr_profiling: bool,
 }
 
 #[derive(Debug)]
@@ -189,7 +189,7 @@ macro_rules! arith {
 }
 
 impl Executor {
-    fn new() -> Executor {
+    pub fn new() -> Executor {
         Executor {
             stack: Stack::new(),
             callstack: Vec::new(),
@@ -199,8 +199,10 @@ impl Executor {
             instr_profiling: false,
         }
     }
-
-    fn call(&mut self, num_params: types::Integer, retval: bool) -> Result<()> {
+    pub fn stack(&mut self) -> &mut Stack {
+        &mut self.stack
+    }
+    pub fn call(&mut self, num_params: types::Integer, retval: bool) -> Result<()> {
         let closure = self.stack.up(-((num_params + 1) as isize)).clone();
         self.start_call(
             closure,
@@ -249,7 +251,7 @@ impl Executor {
         Ok(())
     }
 
-    fn execute(&mut self) -> Result<Object> {
+    pub fn execute(&mut self) -> Result<Object> {
         let mut ci = self
             .callstack
             .last_mut()
@@ -278,6 +280,11 @@ impl Executor {
                 Opcode::LOAD => {
                     *self.stack.value_mut(instr.arg0 as types::Integer) =
                         func.literals[instr.arg1 as usize].clone();
+                    LoopState::Continue
+                }
+                Opcode::MOVE => {
+                    self.stack
+                        .set_target(instr, self.stack.get_arg1(instr).clone());
                     LoopState::Continue
                 }
                 Opcode::ADD => arith!(+,self, instr),
@@ -513,9 +520,11 @@ impl Executor {
                 _ => (),
             }
         }
+
+        self.profiling.print();
     }
 
-    fn push_roottable(&mut self) {
+    pub fn push_roottable(&mut self) {
         self.stack.push(self.roottable.clone());
     }
 }
@@ -559,6 +568,6 @@ mod tests {
         //let ret = exec.stack.pop();
         println!("{:?}", retval);
         exec.profiling.print();
-        assert_eq!(retval.integer().unwrap(), 111)
+        assert_eq!(retval.integer().unwrap(), 4091140000);
     }
 }

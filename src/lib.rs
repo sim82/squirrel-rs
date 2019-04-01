@@ -51,7 +51,7 @@ pub mod obj_flags {
     pub const CANBEFALSE: isize = 0x01000000;
 }
 
-#[derive(FromPrimitive, ToPrimitive)]
+#[derive(FromPrimitive, ToPrimitive, Debug)]
 enum ObjectType {
     Null = (raw_type::NULL | obj_flags::CANBEFALSE),
     Integer = (raw_type::INTEGER | obj_flags::NUMERIC | obj_flags::CANBEFALSE),
@@ -107,7 +107,7 @@ pub enum Object {
 }
 
 impl Object {
-    fn string(&self) -> Result<&str> {
+    pub fn string(&self) -> Result<&str> {
         match self {
             Object::String(str) => Ok(&str[..]),
             _ => Err(Error::RuntimeError(format!(
@@ -117,7 +117,7 @@ impl Object {
         }
     }
 
-    fn closure(&self) -> Result<Rc<object::Closure>> {
+    pub fn closure(&self) -> Result<Rc<object::Closure>> {
         match self {
             Object::Closure(closure) => Ok(closure.clone()),
             _ => Err(Error::RuntimeError(format!(
@@ -126,7 +126,7 @@ impl Object {
             ))),
         }
     }
-    fn func_proto(&self) -> Result<Rc<object::FuncProto>> {
+    pub fn func_proto(&self) -> Result<Rc<object::FuncProto>> {
         match self {
             Object::FuncProto(fp) => Ok(fp.clone()),
             _ => Err(Error::RuntimeError(format!(
@@ -135,7 +135,7 @@ impl Object {
             ))),
         }
     }
-    fn integer(&self) -> Result<types::Integer> {
+    pub fn integer(&self) -> Result<types::Integer> {
         match self {
             Object::Integer(i) => Ok(i.clone()),
             _ => Err(Error::RuntimeError(format!(
@@ -144,7 +144,7 @@ impl Object {
             ))),
         }
     }
-    fn table(&self) -> Result<Ref<object::Table>> {
+    pub fn table(&self) -> Result<Ref<object::Table>> {
         match self {
             Object::Table(t) => Ok(t.borrow()),
             _ => Err(Error::RuntimeError(format!(
@@ -153,7 +153,7 @@ impl Object {
             ))),
         }
     }
-    fn table_mut(&mut self) -> Result<RefMut<object::Table>> {
+    pub fn table_mut(&mut self) -> Result<RefMut<object::Table>> {
         match self {
             Object::Table(t) => Ok(t.borrow_mut()),
             _ => Err(Error::RuntimeError(format!(
@@ -163,7 +163,7 @@ impl Object {
         }
     }
 
-    fn type_name(&self) -> &'static str {
+    pub fn type_name(&self) -> &'static str {
         match self {
             Object::Integer(_) => "int",
             Object::Bool(_) => "bool",

@@ -24,15 +24,16 @@ fn read_string(rdr: &mut dyn Read) -> Result<Object> {
 }
 
 fn read_object(rdr: &mut dyn Read) -> Result<Object> {
-    let obj_type = rdr.read_u32::<LittleEndian>()?;
+    let obj_type = FromPrimitive::from_u32(rdr.read_u32::<LittleEndian>()?);
 
-    match FromPrimitive::from_u32(obj_type) {
+    match obj_type {
         Some(ObjectType::Integer) => Ok(Object::Integer(rdr.read_i64::<LittleEndian>()?)),
         Some(ObjectType::Float) => Ok(Object::Float(rdr.read_f32::<LittleEndian>()?)),
         Some(ObjectType::String) => read_string(rdr),
-        Some(_) => panic!("unhandled object type"),
+        Some(Null) => Ok(Object::Null),
+        Some(_) => panic!("unhandled object type {:?}", obj_type),
         None => Err(Error::RuntimeError(format!(
-            "failed to decode object type: {}",
+            "failed to decode object type: {:?}",
             obj_type,
         ))),
     }
