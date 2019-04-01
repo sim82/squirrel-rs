@@ -27,6 +27,7 @@ fn main() {
         // #[cfg(debug)]
         {
             exec.instr_profiling = true;
+            exec.trace_call_return = true;
         }
 
         exec.stack().push(closure);
