@@ -10,4 +10,6 @@ function Ack(M, N) {
     return( Ack(M - 1, Ack(M, (N - 1))) );
 }
 
-return Ack(3,10);
+local a = Ack(3,10);
+
+print(a);

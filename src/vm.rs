@@ -33,7 +33,7 @@ impl Display for Stack {
 impl Stack {
     fn new() -> Stack {
         Stack {
-            stack: vec![Object::Null; 1024],
+            stack: vec![Object::Null; 1024 * 100],
             frame: StackFrame { base: 1, top: 1 },
         }
     }
@@ -500,7 +500,29 @@ impl Executor {
                     closure,
                     num_args,
                     arg_offset,
-                } => {}
+                } => {
+                    if self.trace_call_return {
+                        println!("tailcall {} {} {}", closure, num_args, arg_offset);
+                        self.stack.print_compact("before tailcall");
+                    }
+
+                    for i in 0..num_args {
+                        // println!(
+                        //     "{} <- {} {}",
+                        //     i,
+                        //     arg_offset + i,
+                        //     self.stack.value(arg_offset + i),
+                        // );
+                        *self.stack.value_mut(i) = self.stack.value(arg_offset + i).clone();
+                    }
+
+                    ci.closure = closure;
+                    ci.ip = 0;
+                    func = ci.closure.closure()?.func_proto.func_proto()?;
+                    if self.trace_call_return {
+                        self.stack.print_compact("after tailcall");
+                    }
+                }
                 LoopState::LeaveFrame(retval) => {
                     if self.trace_call_return {
                         println!("LeaveFrame {:?} -> {}", retval, ci.target);
