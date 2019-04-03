@@ -52,8 +52,19 @@ impl Stack {
 
     fn value_mut(&mut self, pos: types::Integer) -> &mut Object {
         &mut self.stack[(self.frame.base + pos) as usize]
+        // self.stack
+        //         .get_mut((self.frame.base + pos) as usize)
+        // unsafe {
+        //     self.stack
+        //         .get_unchecked_mut((self.frame.base + pos) as usize)
+        // }
     }
-
+    fn swap(&mut self, pos1: types::Integer, pos2: types::Integer) {
+        self.stack.swap(
+            (pos1 + self.frame.base) as usize,
+            (pos2 + self.frame.base) as usize,
+        );
+    }
     fn get_frame(&self) -> StackFrame {
         self.frame.clone()
     }
@@ -400,7 +411,6 @@ impl Executor {
                     self.stack
                         .set_target(instr, Object::Closure(Rc::new(new_closure)));
                     LoopState::Continue
-                    // if(!CLOSURE_OP(TARGET,fp->_functions[arg1]._unVal.pFunctionProto)) { SQ_THROW(); }
                 }
                 Opcode::NEWSLOT => {
                     // println!(
@@ -423,7 +433,6 @@ impl Executor {
                     table.map.insert(key, value);
 
                     LoopState::Continue
-                    // NewSlotA(STK(arg1),STK(arg2),STK(arg3),(arg0&NEW_SLOT_ATTRIBUTES_FLAG) ? STK(arg2-1) : SQObjectPtr(),(arg0&NEW_SLOT_STATIC_FLAG)?true:false,false));
                 }
                 Opcode::PREPCALLK | Opcode::PREPCALL => {
                     let key = if opcode == Opcode::PREPCALLK {
@@ -513,7 +522,9 @@ impl Executor {
                         //     arg_offset + i,
                         //     self.stack.value(arg_offset + i),
                         // );
-                        *self.stack.value_mut(i) = self.stack.value(arg_offset + i).clone();
+                        // *self.stack.value_mut(i) = self.stack.value(arg_offset + i).clone();
+                        // self.stack.stack.swap(i as usize, (arg_offset + i) as usize);
+                        self.stack.swap(i, arg_offset + i);
                     }
 
                     ci.closure = closure;

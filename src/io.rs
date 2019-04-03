@@ -10,10 +10,11 @@ fn read_string(rdr: &mut dyn Read) -> Result<Object> {
     let len = rdr.read_u64::<LittleEndian>()? as usize;
     let mut buf = vec![0; len];
     match rdr.read(&mut buf) {
-        Ok(rlen) if rlen == len => Ok(Object::String(Box::new(
+        Ok(rlen) if rlen == len => Ok(Object::String(
             String::from_utf8(buf)
-                .map_err(|x| Error::RuntimeError(format!("failed to decode utf8: {}", x)))?,
-        ))),
+                .map_err(|x| Error::RuntimeError(format!("failed to decode utf8: {}", x)))?
+                .into(),
+        )),
         Ok(rlen) => Err(Error::RuntimeError(format!(
             "could not read {} bytes for string. Got {}",
             len, rlen

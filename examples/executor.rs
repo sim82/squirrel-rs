@@ -12,9 +12,10 @@ fn main() {
         // println!("The first argument is {}", arg1);
 
         println!(
-            "object size: {} {}",
+            "object size: {} {} {}",
             std::mem::size_of::<Rc<object::FuncProto>>(),
             std::mem::size_of::<squirrel_rs::Object>(),
+            std::mem::size_of::<Box<str>>(),
         );
         let mut file = File::open(filename).unwrap();
         //        let mut bc = &include_bytes!("out.cnut")[..];

@@ -11,5 +11,5 @@ function Ack(M, N) {
 }
 
 local a = Ack(3,10);
-
-print(a);
+return a;
+// print(a);
