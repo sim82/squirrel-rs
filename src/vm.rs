@@ -255,7 +255,7 @@ impl Executor {
         num_params: types::Integer,
         stackbase: types::Integer,
     ) -> Result<()> {
-        let func = closure.closure()?.func_proto.func_proto()?;
+        let func = closure.closure_ref()?.func_proto.func_proto_ref()?;
         let newtop = stackbase + func.stacksize;
 
         self.callstack.push(CallInfo {
@@ -280,7 +280,7 @@ impl Executor {
             .last_mut()
             .ok_or_else(|| Error::RuntimeError("callstack empty".to_string()))?;
 
-        let mut func = ci.closure.closure()?.func_proto.func_proto()?;
+        let mut func = ci.closure.closure_ref()?.func_proto.func_proto()?;
 
         loop {
             let instr = &func.instructions[ci.ip as usize];
@@ -520,7 +520,7 @@ impl Executor {
                         .callstack
                         .last_mut()
                         .ok_or_else(|| Error::RuntimeError("callstack empty".to_string()))?;
-                    func = ci.closure.closure()?.func_proto.func_proto()?;
+                    func = ci.closure.closure_ref()?.func_proto.func_proto()?;
 
                     if self.trace_call_return {
                         self.stack.print_compact("after call");
@@ -550,7 +550,7 @@ impl Executor {
 
                     ci.closure = closure;
                     ci.ip = 0;
-                    func = ci.closure.closure()?.func_proto.func_proto()?;
+                    func = ci.closure.closure_ref()?.func_proto.func_proto()?;
                     if self.trace_call_return {
                         self.stack.print_compact("after tailcall");
                     }
@@ -584,7 +584,7 @@ impl Executor {
                             self.stack.print_compact("after return");
                         }
 
-                        func = ci.closure.closure()?.func_proto.func_proto()?;
+                        func = ci.closure.closure_ref()?.func_proto.func_proto()?;
                     } else {
                         return Ok(retval);
                     }

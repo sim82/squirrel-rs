@@ -127,9 +127,27 @@ impl Object {
             ))),
         }
     }
+    pub fn closure_ref(&self) -> Result<&object::Closure> {
+        match self {
+            Object::Closure(closure) => Ok(closure),
+            _ => Err(Error::RuntimeError(format!(
+                "expected closure. found {}",
+                self.type_name()
+            ))),
+        }
+    }
     pub fn func_proto(&self) -> Result<Rc<object::FuncProto>> {
         match self {
             Object::FuncProto(fp) => Ok(fp.clone()),
+            _ => Err(Error::RuntimeError(format!(
+                "expected FuncProto. found {}",
+                self.type_name()
+            ))),
+        }
+    }
+    pub fn func_proto_ref(&self) -> Result<&object::FuncProto> {
+        match self {
+            Object::FuncProto(fp) => Ok(fp),
             _ => Err(Error::RuntimeError(format!(
                 "expected FuncProto. found {}",
                 self.type_name()
