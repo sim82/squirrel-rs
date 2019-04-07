@@ -4,6 +4,13 @@
 *
 */
 
+// function print(bla) {
+
+
+// }
+
+// print("start\n");
+
 function Ack(M, N) {
     if (M == 0) return( N + 1 );
     if (N == 0) return( Ack(M - 1, 1) );

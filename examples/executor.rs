@@ -45,7 +45,12 @@ fn main() {
         exec.stack().print_compact("initial");
 
         exec.call(num_args, false).unwrap();
-        let retval = exec.execute().unwrap();
+        let ret = exec.execute();
+        if ret.is_err() {
+            exec.print_state();
+        }
+
+        let retval = ret.unwrap();
         //let ret = exec.stack.pop();
         println!("{:?}", retval);
         assert_eq!(retval.integer().unwrap(), 111)

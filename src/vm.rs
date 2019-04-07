@@ -138,7 +138,7 @@ struct CallInfo {
     ip: types::Integer,
     root: bool,
 
-    target: types::Integer,
+    target: Option<types::Integer>,
 }
 
 struct Profiling {
@@ -176,7 +176,12 @@ pub struct Executor {
 enum LoopState {
     Continue,
     LeaveFrame(Object),
-    Call(Object, types::Integer, types::Integer, types::Integer),
+    Call {
+        closure: Object,
+        target: Option<types::Integer>,
+        num_args: types::Integer,
+        stack_inc: types::Integer,
+    },
     TailCall {
         closure: Object,
         num_args: types::Integer,
@@ -219,12 +224,14 @@ impl Executor {
         &mut self.stack
     }
     pub fn call(&mut self, num_params: types::Integer, retval: bool) -> Result<()> {
+        let top = self.stack.frame.top;
+
         let closure = self.stack.up(-((num_params + 1) as isize)).clone();
         self.start_call(
             closure,
-            self.stack.frame.top - num_params,
+            Some(top - num_params),
             num_params,
-            self.stack.frame.top - num_params,
+            top - num_params,
         )?;
         self.callstack
             .last_mut()
@@ -244,21 +251,21 @@ impl Executor {
     fn start_call(
         &mut self,
         closure: Object,
-        target: types::Integer,
+        target: Option<types::Integer>,
         num_params: types::Integer,
         stackbase: types::Integer,
     ) -> Result<()> {
+        let func = closure.closure()?.func_proto.func_proto()?;
+        let newtop = stackbase + func.stacksize;
+
         self.callstack.push(CallInfo {
             prevframe: self.stack.get_frame(),
-            closure: closure.clone(),
+            closure: closure,
             ip: 0,
             root: false,
             target: target,
         });
 
-        let func = closure.closure()?.func_proto.func_proto()?;
-
-        let newtop = stackbase + func.stacksize;
         self.stack.set_frame(StackFrame {
             base: stackbase,
             top: newtop,
@@ -325,7 +332,7 @@ impl Executor {
                         }
                         _ => {
                             return Err(Error::RuntimeError(format!(
-                                "unhandled operands {:?} {:?}",
+                                "unhandled operands {} {}",
                                 op1, op2
                             )))
                         }
@@ -436,28 +443,34 @@ impl Executor {
                 }
                 Opcode::PREPCALLK | Opcode::PREPCALL => {
                     let key = if opcode == Opcode::PREPCALLK {
-                        func.literals[instr.arg1 as usize].clone()
+                        &func.literals[instr.arg1 as usize]
                     } else {
-                        self.stack.get_arg1(instr).clone()
+                        self.stack.get_arg1(instr)
                     };
                     let o = self.stack.get_arg2(instr).clone();
-                    let table = o.table()?;
+                    {
+                        let table = o.table()?;
 
-                    let tmp = table.map.get(&key).ok_or_else(|| {
-                        Error::RuntimeError(format!("key {:?} not found in table", key))
-                    })?;
-                    self.stack.set_arg3(instr, o.clone());
-                    self.stack.set_target(instr, tmp.clone());
+                        let tmp = table.map.get(key).ok_or_else(|| {
+                            Error::RuntimeError(format!("key {:?} not found in table", key))
+                        })?;
+                        self.stack.set_target(instr, tmp.clone());
+                    }
+                    self.stack.set_arg3(instr, o);
 
                     // self.stack.print_compact();
                     LoopState::Continue
                 }
-                Opcode::CALL => LoopState::Call(
-                    self.stack.get_arg1(instr).clone(),
-                    instr.arg0 as types::Integer,
-                    instr.arg3 as types::Integer,
-                    instr.arg2 as types::Integer,
-                ),
+                Opcode::CALL => LoopState::Call {
+                    closure: self.stack.get_arg1(instr).clone(),
+                    target: if instr.arg0 != 255 {
+                        Some(instr.arg0 as types::Integer)
+                    } else {
+                        None
+                    },
+                    num_args: instr.arg3 as types::Integer,
+                    stack_inc: instr.arg2 as types::Integer,
+                },
                 Opcode::TAILCALL => LoopState::TailCall {
                     closure: self.stack.get_arg1(instr).clone(),
                     num_args: instr.arg3 as types::Integer,
@@ -482,12 +495,20 @@ impl Executor {
             };
 
             match state {
-                LoopState::Call(closure, target, num_args, stack_inc) => {
+                LoopState::Call {
+                    closure,
+                    target,
+                    num_args,
+                    stack_inc,
+                } => {
                     if self.trace_call_return {
                         println!(
                             "call {} {} {} {}",
                             closure,
-                            self.stack.frame.base + target,
+                            match target {
+                                Some(target) => format!("{}", self.stack.frame.base + target),
+                                None => "none".into(),
+                            },
                             num_args,
                             self.stack.frame.base + stack_inc
                         );
@@ -536,7 +557,10 @@ impl Executor {
                 }
                 LoopState::LeaveFrame(retval) => {
                     if self.trace_call_return {
-                        println!("LeaveFrame {:?} -> {}", retval, ci.target);
+                        match ci.target {
+                            Some(target) => println!("LeaveFrame {:?} -> {}", retval, target),
+                            None => println!("LeaveFrame noreturn"),
+                        }
                     }
                     let root = ci.root;
                     if !root {
@@ -553,8 +577,9 @@ impl Executor {
                             .last_mut()
                             .ok_or_else(|| Error::RuntimeError("callstack empty".to_string()))?;
 
-                        *self.stack.value_mut(target) = retval;
-
+                        if let Some(target) = target {
+                            *self.stack.value_mut(target) = retval;
+                        }
                         if self.trace_call_return {
                             self.stack.print_compact("after return");
                         }
@@ -574,6 +599,19 @@ impl Executor {
 
     pub fn push_roottable(&mut self) {
         self.stack.push(self.roottable.clone());
+    }
+    pub fn print_state(&self) -> Result<()> {
+        let ci = self
+            .callstack
+            .last()
+            .ok_or_else(|| Error::RuntimeError("callstack empty".to_string()))?;
+
+        let func = ci.closure.closure()?.func_proto.func_proto()?;
+        println!(
+            "function: {} {}\nip: {}",
+            func.source_name, func.name, ci.ip
+        );
+        Ok(())
     }
 }
 
