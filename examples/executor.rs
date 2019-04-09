@@ -2,6 +2,7 @@ use squirrel_rs::io::read_closure;
 
 use squirrel_rs::object;
 use squirrel_rs::vm::Executor;
+use squirrel_rs::Object;
 use std::env;
 use std::fs::File;
 use std::io::prelude::*;
@@ -32,6 +33,17 @@ fn main() {
         // assert!(false);
 
         let mut exec = Executor::new();
+        exec.add_native_func(
+            "print",
+            squirrel_rs::native_closure(
+                Box::new(|stack| {
+                    println!("print\n");
+                    stack.print_compact("print");
+                }),
+                1,
+            ),
+        )
+        .unwrap();
         // #[cfg(debug)]
         {
             exec.instr_profiling = false;

@@ -13,6 +13,26 @@ impl Closure {
     }
 }
 
+pub struct NativeClosure {
+    pub func: Box<dyn Fn(&mut super::vm::Stack)>,
+    pub nargs: types::Integer,
+}
+
+impl NativeClosure {
+    pub fn new(func: Box<Fn(&mut super::vm::Stack)>, nargs: types::Integer) -> NativeClosure {
+        NativeClosure {
+            func: func,
+            nargs: nargs,
+        }
+    }
+}
+
+impl std::fmt::Debug for NativeClosure {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(fmt, "nativeclosure()")
+    }
+}
+
 #[derive(Debug)]
 pub struct FuncProto {
     pub source_name: Object,

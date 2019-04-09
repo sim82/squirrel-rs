@@ -41,7 +41,7 @@ impl Stack {
     fn up(&mut self, pos: isize) -> &mut Object {
         &mut self.stack[(self.frame.top as isize + pos) as usize]
     }
-    fn top(&mut self) -> &mut Object {
+    pub fn top(&mut self) -> &mut Object {
         // &mut self.stack[self.frame.top - 1]
         self.up(-1)
     }
@@ -515,13 +515,33 @@ impl Executor {
                         self.stack.print_compact("before call");
                     }
                     let new_base = self.stack.frame.base + stack_inc;
-                    self.start_call(closure, target, num_args, new_base)?;
-                    ci = self
-                        .callstack
-                        .last_mut()
-                        .ok_or_else(|| Error::RuntimeError("callstack empty".to_string()))?;
-                    func = ci.closure.closure_ref()?.func_proto.func_proto()?;
 
+                    match closure {
+                        Object::Closure(_) => {
+                            self.start_call(closure, target, num_args, new_base)?;
+                            ci = self.callstack.last_mut().ok_or_else(|| {
+                                Error::RuntimeError("callstack empty".to_string())
+                            })?;
+                            func = ci.closure.closure_ref()?.func_proto.func_proto()?;
+                        }
+                        Object::NativeClosure(native_closure) => {
+                            let new_top = new_base + native_closure.nargs;
+                            let last_frame = self.stack.get_frame();
+                            self.stack.set_frame(StackFrame {
+                                base: new_base,
+                                top: new_top,
+                            });
+
+                            (native_closure.func)(&mut self.stack);
+                            self.stack.set_frame(last_frame);
+                        }
+                        _ => {
+                            return Err(Error::RuntimeError(format!(
+                                "expected Closure or NativeClosure. found {}",
+                                closure
+                            )))
+                        }
+                    }
                     if self.trace_call_return {
                         self.stack.print_compact("after call");
                     }
@@ -611,6 +631,14 @@ impl Executor {
             "function: {} {}\nip: {}",
             func.source_name, func.name, ci.ip
         );
+        Ok(())
+    }
+
+    pub fn add_native_func(&mut self, name: &str, closure: Object) -> Result<()> {
+        self.roottable
+            .table_mut()?
+            .map
+            .insert(Object::String(name.into()), closure);
         Ok(())
     }
 }

@@ -103,6 +103,7 @@ pub enum Object {
     String(Box<str>),
     FuncProto(Rc<object::FuncProto>),
     Closure(Rc<object::Closure>),
+    NativeClosure(Rc<object::NativeClosure>),
     Table(Rc<RefCell<object::Table>>),
     Null,
 }
@@ -190,6 +191,7 @@ impl Object {
             Object::String(_) => "string",
             Object::FuncProto(_) => "func_proto",
             Object::Closure(_) => "closure",
+            Object::NativeClosure(_) => "nativeclosure",
             Object::Table(_) => "table",
             Object::Null => "null",
         }
@@ -214,6 +216,7 @@ impl std::fmt::Display for Object {
             Object::String(s) => write!(fmt, "string({})", s),
             Object::FuncProto(func) => write!(fmt, "func_proto({})", func.name.string().unwrap()), // TODO: map to fmt error
             Object::Closure(closure) => write!(fmt, "closure({})", closure.func_proto),
+            Object::NativeClosure(_) => write!(fmt, "nativeclosure()"),
             Object::Table(_) => write!(fmt, "table"),
             Object::Null => write!(fmt, "null"),
         }
@@ -252,3 +255,7 @@ impl std::cmp::Eq for Object {}
 //         }
 //     }
 // }
+
+pub fn native_closure(func: Box<Fn(&mut vm::Stack)>, nargs: types::Integer) -> Object {
+    Object::NativeClosure(Rc::new(object::NativeClosure::new(func, nargs)))
+}
