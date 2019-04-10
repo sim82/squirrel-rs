@@ -37,8 +37,9 @@ fn main() {
             "print",
             squirrel_rs::native_closure(
                 Box::new(|stack| {
-                    println!("print\n");
-                    stack.print_compact("print");
+                    // println!("print '{}'\n", stack.up(0));
+                    print!("{}", stack.up(0));
+                    // stack.print_compact("print");
                 }),
                 1,
             ),
@@ -65,6 +66,6 @@ fn main() {
         let retval = ret.unwrap();
         //let ret = exec.stack.pop();
         println!("{:?}", retval);
-        assert_eq!(retval.integer().unwrap(), 111)
+        //assert_eq!(retval.integer().unwrap(), 111)
     }
 }

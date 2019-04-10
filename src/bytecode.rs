@@ -80,6 +80,13 @@ pub enum CompOp {
     _3W = 5,
 }
 
+#[derive(FromPrimitive, ToPrimitive, Debug)]
+pub enum NewObjectType {
+    TABLE = 0,
+    ARRAY = 1,
+    CLASS = 2,
+}
+
 // #[derive(Debug)]
 pub struct Instruction {
     pub arg1: i32,

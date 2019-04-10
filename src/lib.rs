@@ -94,7 +94,7 @@ pub mod types {
     pub type Float = f32;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum Object {
     Integer(types::Integer),
     Float(types::Float),
@@ -109,6 +109,13 @@ pub enum Object {
 }
 
 impl Object {
+    pub fn new_table() -> Object {
+        Object::Table(Rc::new(RefCell::new(object::Table::new())))
+    }
+
+    pub fn new_string(s: &str) -> Object {
+        Object::String(s.into())
+    }
     pub fn string(&self) -> Result<&str> {
         match self {
             Object::String(str) => Ok(&str[..]),
@@ -196,6 +203,18 @@ impl Object {
             Object::Null => "null",
         }
     }
+
+    pub fn typesystem_name(&self) -> &'static str {
+        match self {
+            Object::Integer(_) => "integer",
+            Object::Bool(_) => "bool",
+            Object::Float(_) => "float",
+            Object::String(_) => "string",
+            Object::FuncProto(_) | Object::Closure(_) | Object::NativeClosure(_) => "function",
+            Object::Table(_) => "table",
+            Object::Null => "null",
+        }
+    }
     // fn table_mut(&mut self) -> Result<Rc<object::Table>> {
     //     match self {
     //         Object::Table(t) => Ok(t.clone()),
@@ -208,6 +227,22 @@ impl Object {
 }
 
 impl std::fmt::Display for Object {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Object::Integer(i) => write!(fmt, "{}", i),
+            Object::Bool(b) => write!(fmt, "{}", b),
+            Object::Float(f) => write!(fmt, "{}", f),
+            Object::String(s) => write!(fmt, "{}", s),
+            Object::FuncProto(func) => write!(fmt, "func_proto({})", func.name.string().unwrap()), // TODO: map to fmt error
+            Object::Closure(closure) => write!(fmt, "closure({})", closure.func_proto),
+            Object::NativeClosure(_) => write!(fmt, "nativeclosure()"),
+            Object::Table(_) => write!(fmt, "table"),
+            Object::Null => write!(fmt, "null"),
+        }
+    }
+}
+
+impl std::fmt::Debug for Object {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
             Object::Integer(i) => write!(fmt, "int({})", i),

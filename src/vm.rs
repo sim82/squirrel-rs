@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use crate::bytecode::{CompOp, Opcode};
+use crate::bytecode::{CompOp, NewObjectType, Opcode};
 use crate::{bytecode, object, types, Object};
 use crate::{Error, Result};
 use num_traits::FromPrimitive;
@@ -38,7 +38,7 @@ impl Stack {
         }
     }
 
-    fn up(&mut self, pos: isize) -> &mut Object {
+    pub fn up(&mut self, pos: isize) -> &mut Object {
         &mut self.stack[(self.frame.top as isize + pos) as usize]
     }
     pub fn top(&mut self) -> &mut Object {
@@ -81,6 +81,9 @@ impl Stack {
         self.frame.top += 1;
     }
 
+    fn set_arg2(&mut self, instr: &bytecode::Instruction, value: Object) {
+        *self.value_mut(instr.arg2 as types::Integer) = value;
+    }
     fn set_arg3(&mut self, instr: &bytecode::Instruction, value: Object) {
         *self.value_mut(instr.arg3 as types::Integer) = value;
     }
@@ -197,6 +200,14 @@ macro_rules! arith {
 
         let res = match (op1, op2) {
             (Object::Integer(int1), Object::Integer(int2)) => Object::Integer(*int1 $op *int2),
+            (Object::String(str1), _) => Object::new_string(&format!("{}{}",str1, op2)), // FIXME: this is crappy
+            // (Object::String(str1), _) => match "$op" {
+            //     "+" => Object::new_string(&format!("{}{}",str1, op2)),
+            //     _ => return Err(Error::RuntimeError(format!(
+            //         "unhandled operands {:?} {} {:?}",
+            //         op1, "$op", op2
+            //     ))),
+            // }
             _ => {
                 return Err(Error::RuntimeError(format!(
                     "unhandled operands {:?} {:?}",
@@ -215,7 +226,7 @@ impl Executor {
             stack: Stack::new(),
             callstack: Vec::new(),
             profiling: Profiling::new(),
-            roottable: Object::Table(Rc::new(RefCell::new(object::Table::new()))),
+            roottable: Object::new_table(),
             trace_call_return: false,
             instr_profiling: false,
         }
@@ -305,6 +316,23 @@ impl Executor {
                         func.literals[instr.arg1 as usize].clone();
                     LoopState::Continue
                 }
+                Opcode::DLOAD => {
+                    // ARGET = ci->_literals[arg1]; STK(arg2) = func.literals[arg3]
+
+                    self.stack
+                        .set_target(instr, func.literals[instr.arg1 as usize].clone());
+                    self.stack
+                        .set_arg2(instr, func.literals[instr.arg3 as usize].clone());
+                    LoopState::Continue
+                }
+                Opcode::TYPEOF => {
+                    // dest = SQString::Create(_ss(this),GetTypeName(obj1));
+                    self.stack.set_target(
+                        instr,
+                        Object::new_string(self.stack.get_arg1(instr).typesystem_name()),
+                    );
+                    LoopState::Continue
+                }
                 Opcode::MOVE => {
                     self.stack
                         .set_target(instr, self.stack.get_arg1(instr).clone());
@@ -317,19 +345,23 @@ impl Executor {
                 Opcode::MOD => arith!(%,self, instr),
 
                 Opcode::EQ => {
-                    if instr.arg3 != 0 {
-                        return Err(Error::RuntimeError(
-                            "literal compare not implemented".to_string(),
-                        ));
-                    }
+                    // if instr.arg3 != 0 {
+                    //     return Err(Error::RuntimeError(
+                    //         "literal compare not implemented".to_string(),
+                    //     ));
+                    // }
 
                     let op1 = self.stack.get_arg2(instr);
-                    let op2 = self.stack.get_arg1(instr);
-
+                    let op2 = if instr.arg3 != 0 {
+                        &func.literals[instr.arg1 as usize]
+                    } else {
+                        self.stack.get_arg1(instr)
+                    };
                     let res = match (op1, op2) {
                         (Object::Integer(int1), Object::Integer(int2)) => {
                             Object::Bool(*int1 == *int2)
                         }
+                        (Object::String(op1), Object::String(op2)) => Object::Bool(*op1 == *op2),
                         _ => {
                             return Err(Error::RuntimeError(format!(
                                 "unhandled operands {} {}",
@@ -485,6 +517,20 @@ impl Executor {
                     // println!("return: {}", instr.arg1);
                     // self.stack.print_compact();
                     LoopState::LeaveFrame(retval)
+                }
+                Opcode::NEWOBJ => {
+                    match <NewObjectType as FromPrimitive>::from_u8(instr.arg3) {
+                        Some(NewObjectType::TABLE) => {
+                            self.stack.set_target(instr, Object::new_table())
+                        }
+                        _ => {
+                            return Err(Error::RuntimeError(format!(
+                                "unhandled NEWOBJ type {:?}",
+                                instr.arg3
+                            )))
+                        }
+                    }
+                    LoopState::Continue
                 }
                 _ => {
                     return Err(Error::RuntimeError(format!(

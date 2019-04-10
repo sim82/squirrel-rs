@@ -18,6 +18,6 @@ function Ack(M, N) {
 }
 
 local a = Ack(3,10);
-print(a);
+print("res: " + a);
 return a;
 // print(a);
