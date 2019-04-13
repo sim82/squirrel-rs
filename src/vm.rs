@@ -1,7 +1,8 @@
 #![allow(dead_code)]
-use crate::bytecode::{CompOp, NewObjectType, Opcode};
+use crate::bytecode::{AppendArrayType, CompOp, NewObjectType, Opcode};
 use crate::{bytecode, object, types, Object};
 use crate::{Error, Result};
+use core::ops::Range;
 use num_traits::FromPrimitive;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -130,6 +131,11 @@ impl Stack {
             println!("{}: {}{}", i, self.stack[i as usize], extra);
         }
         println!(" ---");
+    }
+
+    pub fn slice_mut(&mut self, r: Range<types::Integer>) -> &mut [Object] {
+        &mut self.stack
+            [((r.start + self.frame.base) as usize)..((r.end + self.frame.base) as usize)]
     }
 }
 
@@ -520,6 +526,10 @@ impl Executor {
                 }
                 Opcode::NEWOBJ => {
                     match <NewObjectType as FromPrimitive>::from_u8(instr.arg3) {
+                        Some(NewObjectType::ARRAY) => {
+                            self.stack
+                                .set_target(instr, Object::new_array(instr.arg1 as types::Integer));
+                        }
                         Some(NewObjectType::TABLE) => {
                             self.stack.set_target(instr, Object::new_table())
                         }
@@ -531,6 +541,44 @@ impl Executor {
                         }
                     }
                     LoopState::Continue
+                }
+                Opcode::APPENDARRAY => {
+                    let val = match <AppendArrayType as FromPrimitive>::from_u8(instr.arg2) {
+                        Some(AppendArrayType::STACK) => self.stack.get_arg1(instr).clone(),
+                        Some(AppendArrayType::LITERAL) => {
+                            func.literals[instr.arg1 as usize].clone()
+                        }
+                        Some(AppendArrayType::INT) => Object::Integer(instr.arg1 as types::Integer),
+                        // Some(AppendArrayType::FLOAT) => Object::Null,
+                        Some(AppendArrayType::BOOL) => Object::Bool(instr.arg1 != 0),
+                        _ => {
+                            return Err(Error::RuntimeError(format!(
+                                "unhandled APPENDARRAY type {:?}",
+                                instr.arg2
+                            )))
+                        }
+                    };
+                    // self.stack.set_target(instr, val);
+                    let array = self.stack.get_arg0_mut(instr);
+                    array.array_mut()?.array.push(val);
+                    LoopState::Continue
+                }
+                Opcode::LOADROOT => {
+                    self.stack.set_target(instr, self.roottable.clone());
+                    LoopState::Continue
+                }
+                Opcode::LOADNULLS => {
+                    self.stack.print_compact("before loadnulls");
+                    for v in self
+                        .stack
+                        .slice_mut(0 as types::Integer..instr.arg0 as types::Integer)
+                    {
+                        *v = Object::Null;
+                    }
+                    self.stack.print_compact("after loadnulls");
+
+                    LoopState::Continue
+                    // for(SQInt32 n=0; n < arg1; n++) STK(arg0+n).Null();
                 }
                 _ => {
                     return Err(Error::RuntimeError(format!(

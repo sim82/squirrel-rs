@@ -87,6 +87,15 @@ pub enum NewObjectType {
     CLASS = 2,
 }
 
+#[derive(FromPrimitive, ToPrimitive, Debug)]
+pub enum AppendArrayType {
+    STACK = 0,
+    LITERAL = 1,
+    INT = 2,
+    FLOAT = 3,
+    BOOL = 4
+}
+
 // #[derive(Debug)]
 pub struct Instruction {
     pub arg1: i32,

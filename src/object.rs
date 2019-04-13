@@ -77,3 +77,15 @@ impl Table {
         }
     }
 }
+
+pub struct Array {
+    pub array: Vec<Object>,
+}
+impl Array {
+    pub fn new() -> Self {
+        Array { array: Vec::new() }
+    }
+    pub fn reserve(&mut self, size: types::Integer) {
+        self.array.reserve(size as usize);
+    }
+}

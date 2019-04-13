@@ -105,6 +105,7 @@ pub enum Object {
     Closure(Rc<object::Closure>),
     NativeClosure(Rc<object::NativeClosure>),
     Table(Rc<RefCell<object::Table>>),
+    Array(Rc<RefCell<object::Array>>),
     Null,
 }
 
@@ -112,7 +113,11 @@ impl Object {
     pub fn new_table() -> Object {
         Object::Table(Rc::new(RefCell::new(object::Table::new())))
     }
-
+    pub fn new_array(capacity: types::Integer) -> Object {
+        let mut array = object::Array::new();
+        array.reserve(capacity);
+        Object::Array(Rc::new(RefCell::new(array)))
+    }
     pub fn new_string(s: &str) -> Object {
         Object::String(s.into())
     }
@@ -189,7 +194,24 @@ impl Object {
             ))),
         }
     }
-
+    pub fn array(&mut self) -> Result<Ref<object::Array>> {
+        match self {
+            Object::Array(a) => Ok(a.borrow()),
+            _ => Err(Error::RuntimeError(format!(
+                "expected array. found {:?}",
+                self
+            ))),
+        }
+    }
+    pub fn array_mut(&mut self) -> Result<RefMut<object::Array>> {
+        match self {
+            Object::Array(a) => Ok(a.borrow_mut()),
+            _ => Err(Error::RuntimeError(format!(
+                "expected array. found {:?}",
+                self
+            ))),
+        }
+    }
     pub fn type_name(&self) -> &'static str {
         match self {
             Object::Integer(_) => "int",
@@ -200,6 +222,7 @@ impl Object {
             Object::Closure(_) => "closure",
             Object::NativeClosure(_) => "nativeclosure",
             Object::Table(_) => "table",
+            Object::Array(_) => "table",
             Object::Null => "null",
         }
     }
@@ -212,6 +235,7 @@ impl Object {
             Object::String(_) => "string",
             Object::FuncProto(_) | Object::Closure(_) | Object::NativeClosure(_) => "function",
             Object::Table(_) => "table",
+            Object::Array(_) => "array",
             Object::Null => "null",
         }
     }
@@ -237,6 +261,7 @@ impl std::fmt::Display for Object {
             Object::Closure(closure) => write!(fmt, "closure({})", closure.func_proto),
             Object::NativeClosure(_) => write!(fmt, "nativeclosure()"),
             Object::Table(_) => write!(fmt, "table"),
+            Object::Array(_) => write!(fmt, "array"),
             Object::Null => write!(fmt, "null"),
         }
     }
@@ -253,6 +278,7 @@ impl std::fmt::Debug for Object {
             Object::Closure(closure) => write!(fmt, "closure({})", closure.func_proto),
             Object::NativeClosure(_) => write!(fmt, "nativeclosure()"),
             Object::Table(_) => write!(fmt, "table"),
+            Object::Array(_) => write!(fmt, "array"),
             Object::Null => write!(fmt, "null"),
         }
     }
