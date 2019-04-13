@@ -207,9 +207,9 @@ mod tests {
             if let Object::FuncProto(func_proto) = &closure.func_proto {
                 assert_eq!(
                     format!("{:?}", func_proto.source_name),
-                    "String(\"factorial.nut\")",
+                    "string(factorial.nut)",
                 );
-                assert_eq!(format!("{:?}", func_proto.name), "String(\"main\")");
+                assert_eq!(format!("{:?}", func_proto.name), "string(main)");
             }
         }
     }
