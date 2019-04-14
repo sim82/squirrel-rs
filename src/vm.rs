@@ -480,22 +480,27 @@ impl Executor {
                     LoopState::Continue
                 }
                 Opcode::PREPCALLK | Opcode::PREPCALL => {
+                    // self.stack.print_compact(&format!("{:?} begin", opcode));
                     let key = if opcode == Opcode::PREPCALLK {
                         &func.literals[instr.arg1 as usize]
                     } else {
                         self.stack.get_arg1(instr)
                     };
-                    let o = self.stack.get_arg2(instr).clone();
-                    {
-                        let table = o.table()?;
+                    // let o = self.stack.get_arg2(instr).clone();
+                    // {
+                    //     println!("get {:?} {:?}", o, key);
+                    //     let table = o.table()?;
 
-                        let tmp = table.map.get(key).ok_or_else(|| {
-                            Error::RuntimeError(format!("key {:?} not found in table", key))
-                        })?;
-                        self.stack.set_target(instr, tmp.clone());
-                    }
-                    self.stack.set_arg3(instr, o);
-
+                    //     let tmp = table.map.get(key).ok_or_else(|| {
+                    //         Error::RuntimeError(format!("key {:?} not found in table", key))
+                    //     })?;
+                    //     self.stack.set_target(instr, tmp.clone());
+                    // }
+                    // self.stack.set_arg3(instr, o);
+                    let obj = self.stack.get_arg2(instr);
+                    let res = get(obj, key)?;
+                    self.stack.set_arg3(instr, obj.clone());
+                    self.stack.set_target(instr, res);
                     // self.stack.print_compact();
                     LoopState::Continue
                 }
@@ -568,17 +573,60 @@ impl Executor {
                     LoopState::Continue
                 }
                 Opcode::LOADNULLS => {
-                    self.stack.print_compact("before loadnulls");
-                    for v in self
-                        .stack
-                        .slice_mut(0 as types::Integer..instr.arg0 as types::Integer)
-                    {
+                    // self.stack.print_compact("before loadnulls");
+                    let first = instr.arg0 as types::Integer;
+                    let last = first + instr.arg1 as types::Integer;
+                    for v in self.stack.slice_mut(first..last) {
                         *v = Object::Null;
                     }
-                    self.stack.print_compact("after loadnulls");
+                    // self.stack.print_compact("after loadnulls");
 
                     LoopState::Continue
                     // for(SQInt32 n=0; n < arg1; n++) STK(arg0+n).Null();
+                }
+                Opcode::FOREACH => {
+                    let container = self.stack.get_arg0(instr);
+                    let outkey = instr.arg2 as types::Integer;
+                    let outvalue = instr.arg2 as types::Integer + 1;
+                    let index_pos = instr.arg2 as types::Integer + 2;
+                    let index = match self.stack.value(index_pos) {
+                        Object::Null => 0,
+                        Object::Integer(i) => *i as usize,
+                        _ => {
+                            return Err(Error::RuntimeError(format!(
+                                "unexpected iterator index: {:?}",
+                                self.stack.value(instr.arg2 as types::Integer + 2),
+                            )))
+                        }
+                    };
+                    let exitpos = instr.arg1 as types::Integer;
+
+                    match container {
+                        Object::Array(array) => {
+                            if index < array.borrow().array.len() {
+                                let out = array.borrow().array[index].clone(); // end borrowing array so we can modify the stack
+
+                                *self.stack.value_mut(outkey) =
+                                    Object::Integer(index as types::Integer);
+                                *self.stack.value_mut(outvalue) = out;
+                                *self.stack.value_mut(index_pos) =
+                                    Object::Integer(index as types::Integer + 1);
+                                ci.ip += 1;
+                            } else {
+                                ci.ip += exitpos; // exit loop
+                            }
+                        }
+                        _ => {
+                            return Err(Error::RuntimeError(format!(
+                                "cannot iterate over {:?}",
+                                container
+                            )))
+                        }
+                    }
+
+                    // STK(arg0),STK(arg2),STK(arg2+1),STK(arg2+2),arg2,sarg1,tojump
+
+                    LoopState::Continue
                 }
                 _ => {
                     return Err(Error::RuntimeError(format!(
@@ -734,6 +782,44 @@ impl Executor {
             .map
             .insert(Object::String(name.into()), closure);
         Ok(())
+    }
+}
+
+fn get(obj: &Object, key: &Object) -> Result<Object> {
+    match obj {
+        Object::Table(table) => table
+            .borrow()
+            .map
+            .get(key)
+            .cloned()
+            .ok_or_else(|| Error::RuntimeError(format!("key {:?} not found in table", key))),
+
+        Object::Array(array) => match key {
+            Object::Integer(i) => array
+                .borrow()
+                .array
+                .get(*i as usize)
+                .cloned()
+                .ok_or_else(|| Error::RuntimeError(format!("array access error {:?}", key))),
+
+            Object::String(s) => match &**s {
+                // hack array default delegation
+                "len" => Ok(Object::Integer(array.borrow().array.len() as types::Integer)),
+                _ => Err(Error::RuntimeError(format!(
+                    "array delegate failed {:?}",
+                    key
+                ))),
+            },
+
+            _ => Err(Error::RuntimeError(format!(
+                "unsupported array key {:?}",
+                key
+            ))),
+        },
+        _ => Err(Error::RuntimeError(format!(
+            "key {:?} not found in table",
+            key
+        ))),
     }
 }
 

@@ -222,7 +222,7 @@ impl Object {
             Object::Closure(_) => "closure",
             Object::NativeClosure(_) => "nativeclosure",
             Object::Table(_) => "table",
-            Object::Array(_) => "table",
+            Object::Array(_) => "array",
             Object::Null => "null",
         }
     }
