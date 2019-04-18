@@ -239,6 +239,21 @@ impl Object {
             Object::Null => "null",
         }
     }
+
+    pub fn clone_object(&self) -> Result<Object> {
+        match self {
+            Object::Integer(_) | Object::Bool(_) | Object::Float(_) | Object::String(_) => {
+                Ok(self.clone())
+            }
+            Object::Table(table) => {
+                Ok(Object::Table(Rc::new(RefCell::new(table.borrow().clone()))))
+            }
+            Object::Array(array) => {
+                Ok(Object::Array(Rc::new(RefCell::new(array.borrow().clone()))))
+            }
+            _ => Err(Error::RuntimeError(format!("cannot clone {}", self))),
+        }
+    }
     // fn table_mut(&mut self) -> Result<Rc<object::Table>> {
     //     match self {
     //         Object::Table(t) => Ok(t.clone()),
@@ -277,8 +292,8 @@ impl std::fmt::Debug for Object {
             Object::FuncProto(func) => write!(fmt, "func_proto({})", func.name.string().unwrap()), // TODO: map to fmt error
             Object::Closure(closure) => write!(fmt, "closure({})", closure.func_proto),
             Object::NativeClosure(_) => write!(fmt, "nativeclosure()"),
-            Object::Table(_) => write!(fmt, "table"),
-            Object::Array(_) => write!(fmt, "array"),
+            Object::Table(table) => write!(fmt, "table({:?})", table.borrow().map),
+            Object::Array(arr) => write!(fmt, "array({:?})", arr.borrow().array),
             Object::Null => write!(fmt, "null"),
         }
     }

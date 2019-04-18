@@ -78,6 +78,7 @@ impl Table {
     }
 }
 
+#[derive(Clone)]
 pub struct Array {
     pub array: Vec<Object>,
 }

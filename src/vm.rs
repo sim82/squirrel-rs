@@ -82,6 +82,12 @@ impl Stack {
         self.frame.top += 1;
     }
 
+    fn set_arg0(&mut self, instr: &bytecode::Instruction, value: Object) {
+        *self.value_mut(instr.arg0 as types::Integer) = value;
+    }
+    fn set_arg1(&mut self, instr: &bytecode::Instruction, value: Object) {
+        *self.value_mut(instr.arg1 as types::Integer) = value;
+    }
     fn set_arg2(&mut self, instr: &bytecode::Instruction, value: Object) {
         *self.value_mut(instr.arg2 as types::Integer) = value;
     }
@@ -89,7 +95,7 @@ impl Stack {
         *self.value_mut(instr.arg3 as types::Integer) = value;
     }
     fn set_target(&mut self, instr: &bytecode::Instruction, value: Object) {
-        *self.value_mut(instr.arg0 as types::Integer) = value;
+        self.set_arg0(instr, value);
     }
     fn get_arg0(&self, instr: &bytecode::Instruction) -> &Object {
         self.value(instr.arg0 as types::Integer)
@@ -381,15 +387,21 @@ impl Executor {
                 }
                 Opcode::JZ => {
                     let cond = self.stack.get_arg0(instr);
-                    if let Object::Bool(b) = cond {
-                        if !*b {
-                            ci.ip += instr.arg1 as types::Integer;
+                    let b = match cond {
+                        Object::Bool(b) => *b,
+                        Object::Integer(i) => *i != 0 as types::Integer,
+                        Object::Null => false,
+                        Object::String(_) => true,
+                        _ => {
+                            return Err(Error::RuntimeError(format!(
+                                "unsopported condition in JZ {:?}",
+                                cond
+                            )))
                         }
-                    } else {
-                        return Err(Error::RuntimeError(format!(
-                            "unsopported condition in JZ {:?}",
-                            cond
-                        )));
+                    };
+
+                    if !b {
+                        ci.ip += instr.arg1 as types::Integer;
                     }
                     LoopState::Continue
                 }
@@ -625,6 +637,27 @@ impl Executor {
                     }
 
                     // STK(arg0),STK(arg2),STK(arg2+1),STK(arg2+2),arg2,sarg1,tojump
+
+                    LoopState::Continue
+                }
+                Opcode::GETK => {
+                    let key = &func.literals[instr.arg1 as usize];
+                    let v = get(self.stack.get_arg2(instr), key)?;
+                    self.stack.set_target(instr, v);
+                    LoopState::Continue
+                    // Get(STK(arg2), ci->_literals[arg1], temp_reg, 0,arg2)
+                }
+                Opcode::CLONE => {
+                    let obj = self.stack.get_arg1(instr);
+                    // println!("clone: {:?}", obj);
+                    self.stack.set_target(instr, obj.clone_object()?);
+                    LoopState::Continue
+                }
+                Opcode::DMOVE => {
+                    self.stack
+                        .set_arg0(instr, self.stack.get_arg1(instr).clone());
+                    self.stack
+                        .set_arg2(instr, self.stack.get_arg3(instr).clone());
 
                     LoopState::Continue
                 }
