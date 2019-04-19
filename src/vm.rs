@@ -4,7 +4,7 @@ use crate::{bytecode, object, types, Object};
 use crate::{Error, Result};
 use core::ops::Range;
 use num_traits::FromPrimitive;
-use std::cell::RefCell;
+use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::rc::Rc;
@@ -17,7 +17,7 @@ struct StackFrame {
 
 #[derive(Debug)]
 pub struct Stack {
-    stack: Vec<Object>,
+    stack: Vec<RefCell<Object>>,
     frame: StackFrame,
 }
 
@@ -34,25 +34,25 @@ impl Display for Stack {
 impl Stack {
     fn new() -> Stack {
         Stack {
-            stack: vec![Object::Null; 1024 * 100],
+            stack: vec![RefCell::new(Object::Null); 1024 * 100],
             frame: StackFrame { base: 1, top: 1 },
         }
     }
 
-    pub fn up(&mut self, pos: isize) -> &mut Object {
-        &mut self.stack[(self.frame.top as isize + pos) as usize]
+    pub fn up(&mut self, pos: isize) -> RefMut<Object> {
+        self.stack[(self.frame.top as isize + pos) as usize].borrow_mut()
     }
-    pub fn top(&mut self) -> &mut Object {
+    pub fn top(&mut self) -> RefMut<Object> {
         // &mut self.stack[self.frame.top - 1]
         self.up(-1)
     }
 
-    fn value(&self, pos: types::Integer) -> &Object {
-        &self.stack[(self.frame.base + pos) as usize]
+    fn value(&self, pos: types::Integer) -> Ref<Object> {
+        self.stack[(self.frame.base + pos) as usize].borrow()
     }
 
-    fn value_mut(&mut self, pos: types::Integer) -> &mut Object {
-        &mut self.stack[(self.frame.base + pos) as usize]
+    fn value_mut(&mut self, pos: types::Integer) -> RefMut<Object> {
+        self.stack[(self.frame.base + pos) as usize].borrow_mut()
         // self.stack
         //         .get_mut((self.frame.base + pos) as usize)
         // unsafe {
@@ -78,7 +78,7 @@ impl Stack {
     }
 
     pub fn push(&mut self, obj: Object) {
-        self.stack[self.frame.top as usize] = obj;
+        self.stack[self.frame.top as usize].swap(&mut RefCell::new(obj));
         self.frame.top += 1;
     }
 
@@ -97,29 +97,29 @@ impl Stack {
     fn set_target(&mut self, instr: &bytecode::Instruction, value: Object) {
         self.set_arg0(instr, value);
     }
-    fn get_arg0(&self, instr: &bytecode::Instruction) -> &Object {
+    fn get_arg0(&self, instr: &bytecode::Instruction) -> Ref<Object> {
         self.value(instr.arg0 as types::Integer)
     }
-    fn get_arg1(&self, instr: &bytecode::Instruction) -> &Object {
+    fn get_arg1(&self, instr: &bytecode::Instruction) -> Ref<Object> {
         self.value(instr.arg1 as types::Integer)
     }
-    fn get_arg2(&self, instr: &bytecode::Instruction) -> &Object {
+    fn get_arg2(&self, instr: &bytecode::Instruction) -> Ref<Object> {
         self.value(instr.arg2 as types::Integer)
     }
-    fn get_arg3(&self, instr: &bytecode::Instruction) -> &Object {
+    fn get_arg3(&self, instr: &bytecode::Instruction) -> Ref<Object> {
         self.value(instr.arg3 as types::Integer)
     }
 
-    fn get_arg0_mut(&mut self, instr: &bytecode::Instruction) -> &mut Object {
+    fn get_arg0_mut(&mut self, instr: &bytecode::Instruction) -> RefMut<Object> {
         self.value_mut(instr.arg0 as types::Integer)
     }
-    fn get_arg1_mut(&mut self, instr: &bytecode::Instruction) -> &mut Object {
+    fn get_arg1_mut(&mut self, instr: &bytecode::Instruction) -> RefMut<Object> {
         self.value_mut(instr.arg1 as types::Integer)
     }
-    fn get_arg2_mut(&mut self, instr: &bytecode::Instruction) -> &mut Object {
+    fn get_arg2_mut(&mut self, instr: &bytecode::Instruction) -> RefMut<Object> {
         self.value_mut(instr.arg2 as types::Integer)
     }
-    fn get_arg3_mut(&mut self, instr: &bytecode::Instruction) -> &mut Object {
+    fn get_arg3_mut(&mut self, instr: &bytecode::Instruction) -> RefMut<Object> {
         self.value_mut(instr.arg3 as types::Integer)
     }
 
@@ -134,12 +134,12 @@ impl Stack {
                 ""
             };
 
-            println!("{}: {}{}", i, self.stack[i as usize], extra);
+            println!("{}: {}{}", i, self.stack[i as usize].borrow(), extra);
         }
         println!(" ---");
     }
 
-    pub fn slice_mut(&mut self, r: Range<types::Integer>) -> &mut [Object] {
+    pub fn slice_mut(&mut self, r: Range<types::Integer>) -> &[RefCell<Object>] {
         &mut self.stack
             [((r.start + self.frame.base) as usize)..((r.end + self.frame.base) as usize)]
     }
@@ -207,26 +207,28 @@ enum LoopState {
 macro_rules! arith {
     ($op:tt, $self:expr, $instr:expr) => {
         {
-        let op1 = $self.stack.get_arg2($instr);
-        let op2 = $self.stack.get_arg1($instr);
+            let res = {
+                let op1 = $self.stack.get_arg2($instr);
+                let op2 = $self.stack.get_arg1($instr);
 
-        let res = match (op1, op2) {
-            (Object::Integer(int1), Object::Integer(int2)) => Object::Integer(*int1 $op *int2),
-            (Object::String(str1), _) => Object::new_string(&format!("{}{}",str1, op2)), // FIXME: this is crappy
-            // (Object::String(str1), _) => match "$op" {
-            //     "+" => Object::new_string(&format!("{}{}",str1, op2)),
-            //     _ => return Err(Error::RuntimeError(format!(
-            //         "unhandled operands {:?} {} {:?}",
-            //         op1, "$op", op2
-            //     ))),
-            // }
-            _ => {
-                return Err(Error::RuntimeError(format!(
-                    "unhandled operands {:?} {:?}",
-                    op1, op2
-                )))
-            }
-        };
+                match (&*op1, &*op2) {
+                    (Object::Integer(int1), Object::Integer(int2)) => Object::Integer(int1 $op int2),
+                    (Object::String(str1), _) => Object::new_string(&format!("{}{}",str1, op2)), // FIXME: this is crappy
+                    // (Object::String(str1), _) => match "$op" {
+                    //     "+" => Object::new_string(&format!("{}{}",str1, op2)),
+                    //     _ => return Err(Error::RuntimeError(format!(
+                    //         "unhandled operands {:?} {} {:?}",
+                    //         op1, "$op", op2
+                    //     ))),
+                    // }
+                    _ => {
+                        return Err(Error::RuntimeError(format!(
+                            "unhandled operands {:?} {:?}",
+                            op1, op2
+                        )))
+                    }
+                }
+            };
         $self.stack.set_target($instr, res);
         LoopState::Continue
     }};
@@ -339,15 +341,13 @@ impl Executor {
                 }
                 Opcode::TYPEOF => {
                     // dest = SQString::Create(_ss(this),GetTypeName(obj1));
-                    self.stack.set_target(
-                        instr,
-                        Object::new_string(self.stack.get_arg1(instr).typesystem_name()),
-                    );
+                    let name = Object::new_string(self.stack.get_arg1(instr).typesystem_name());
+                    self.stack.set_target(instr, name);
                     LoopState::Continue
                 }
                 Opcode::MOVE => {
-                    self.stack
-                        .set_target(instr, self.stack.get_arg1(instr).clone());
+                    let src = self.stack.get_arg1(instr).clone();
+                    self.stack.set_target(instr, src);
                     LoopState::Continue
                 }
                 Opcode::ADD => arith!(+,self, instr),
@@ -362,23 +362,27 @@ impl Executor {
                     //         "literal compare not implemented".to_string(),
                     //     ));
                     // }
-
-                    let op1 = self.stack.get_arg2(instr);
-                    let op2 = if instr.arg3 != 0 {
-                        &func.literals[instr.arg1 as usize]
-                    } else {
-                        self.stack.get_arg1(instr)
-                    };
-                    let res = match (op1, op2) {
-                        (Object::Integer(int1), Object::Integer(int2)) => {
-                            Object::Bool(*int1 == *int2)
-                        }
-                        (Object::String(op1), Object::String(op2)) => Object::Bool(*op1 == *op2),
-                        _ => {
-                            return Err(Error::RuntimeError(format!(
-                                "unhandled operands {} {}",
-                                op1, op2
-                            )))
+                    let res = {
+                        let op1 = self.stack.get_arg2(instr);
+                        let op2 = if instr.arg3 != 0 {
+                            func.literals[instr.arg1 as usize].clone()
+                        } else {
+                            let x = self.stack.get_arg1(instr);
+                            x.clone()
+                        };
+                        match (&*op1, &op2) {
+                            (Object::Integer(int1), Object::Integer(int2)) => {
+                                Object::Bool(*int1 == *int2)
+                            }
+                            (Object::String(op1), Object::String(op2)) => {
+                                Object::Bool(*op1 == *op2)
+                            }
+                            _ => {
+                                return Err(Error::RuntimeError(format!(
+                                    "unhandled operands {} {}",
+                                    op1, op2
+                                )))
+                            }
                         }
                     };
                     self.stack.set_target(instr, res);
@@ -387,9 +391,9 @@ impl Executor {
                 }
                 Opcode::JZ => {
                     let cond = self.stack.get_arg0(instr);
-                    let b = match cond {
-                        Object::Bool(b) => *b,
-                        Object::Integer(i) => *i != 0 as types::Integer,
+                    let b = match *cond {
+                        Object::Bool(b) => b,
+                        Object::Integer(i) => i != 0 as types::Integer,
                         Object::Null => false,
                         Object::String(_) => true,
                         _ => {
@@ -414,9 +418,9 @@ impl Executor {
                     let op1 = self.stack.get_arg2(instr);
                     let op2 = self.stack.get_arg0(instr);
 
-                    let r = match (op1, op2) {
+                    let r = match (&*op1, &*op2) {
                         (Object::Integer(int1), Object::Integer(int2)) => {
-                            if int1 == int2 {
+                            if *int1 == *int2 {
                                 0
                             } else if int1 < int2 {
                                 -1
@@ -485,8 +489,8 @@ impl Executor {
 
                     let key = self.stack.get_arg2(instr).clone();
                     let value = self.stack.get_arg3(instr).clone();
-
-                    let mut table = self.stack.get_arg1_mut(instr).table_mut()?;
+                    let mut table = self.stack.get_arg1_mut(instr);
+                    let mut table = table.table_mut()?;
                     table.map.insert(key, value);
 
                     LoopState::Continue
@@ -494,9 +498,9 @@ impl Executor {
                 Opcode::PREPCALLK | Opcode::PREPCALL => {
                     // self.stack.print_compact(&format!("{:?} begin", opcode));
                     let key = if opcode == Opcode::PREPCALLK {
-                        &func.literals[instr.arg1 as usize]
+                        func.literals[instr.arg1 as usize].clone()
                     } else {
-                        self.stack.get_arg1(instr)
+                        self.stack.get_arg1(instr).clone()
                     };
                     // let o = self.stack.get_arg2(instr).clone();
                     // {
@@ -509,9 +513,9 @@ impl Executor {
                     //     self.stack.set_target(instr, tmp.clone());
                     // }
                     // self.stack.set_arg3(instr, o);
-                    let obj = self.stack.get_arg2(instr);
-                    let res = get(obj, key)?;
-                    self.stack.set_arg3(instr, obj.clone());
+                    let obj = self.stack.get_arg2(instr).clone();
+                    let res = get(&obj, &key)?;
+                    self.stack.set_arg3(instr, obj);
                     self.stack.set_target(instr, res);
                     // self.stack.print_compact();
                     LoopState::Continue
@@ -576,7 +580,7 @@ impl Executor {
                         }
                     };
                     // self.stack.set_target(instr, val);
-                    let array = self.stack.get_arg0_mut(instr);
+                    let mut array = self.stack.get_arg0_mut(instr);
                     array.array_mut()?.array.push(val);
                     LoopState::Continue
                 }
@@ -589,7 +593,7 @@ impl Executor {
                     let first = instr.arg0 as types::Integer;
                     let last = first + instr.arg1 as types::Integer;
                     for v in self.stack.slice_mut(first..last) {
-                        *v = Object::Null;
+                        v.swap(&RefCell::new(Object::Null));
                     }
                     // self.stack.print_compact("after loadnulls");
 
@@ -597,13 +601,13 @@ impl Executor {
                     // for(SQInt32 n=0; n < arg1; n++) STK(arg0+n).Null();
                 }
                 Opcode::FOREACH => {
-                    let container = self.stack.get_arg0(instr);
+                    let container = self.stack.get_arg0(instr).clone();
                     let outkey = instr.arg2 as types::Integer;
                     let outvalue = instr.arg2 as types::Integer + 1;
                     let index_pos = instr.arg2 as types::Integer + 2;
-                    let index = match self.stack.value(index_pos) {
+                    let index = match *self.stack.value(index_pos) {
                         Object::Null => 0,
-                        Object::Integer(i) => *i as usize,
+                        Object::Integer(i) => i as usize,
                         _ => {
                             return Err(Error::RuntimeError(format!(
                                 "unexpected iterator index: {:?}",
@@ -613,7 +617,7 @@ impl Executor {
                     };
                     let exitpos = instr.arg1 as types::Integer;
 
-                    match container {
+                    match &container {
                         Object::Array(array) => {
                             if index < array.borrow().array.len() {
                                 let out = array.borrow().array[index].clone(); // end borrowing array so we can modify the stack
@@ -642,22 +646,22 @@ impl Executor {
                 }
                 Opcode::GETK => {
                     let key = &func.literals[instr.arg1 as usize];
-                    let v = get(self.stack.get_arg2(instr), key)?;
+                    let v = get(&*self.stack.get_arg2(instr), key)?;
                     self.stack.set_target(instr, v);
                     LoopState::Continue
                     // Get(STK(arg2), ci->_literals[arg1], temp_reg, 0,arg2)
                 }
                 Opcode::CLONE => {
-                    let obj = self.stack.get_arg1(instr);
+                    let obj = self.stack.get_arg1(instr).clone_object()?;
                     // println!("clone: {:?}", obj);
-                    self.stack.set_target(instr, obj.clone_object()?);
+                    self.stack.set_target(instr, obj);
                     LoopState::Continue
                 }
                 Opcode::DMOVE => {
-                    self.stack
-                        .set_arg0(instr, self.stack.get_arg1(instr).clone());
-                    self.stack
-                        .set_arg2(instr, self.stack.get_arg3(instr).clone());
+                    let obj1 = self.stack.get_arg1(instr).clone();
+                    self.stack.set_arg0(instr, obj1);
+                    let obj3 = self.stack.get_arg3(instr).clone();
+                    self.stack.set_arg2(instr, obj3);
 
                     LoopState::Continue
                 }
