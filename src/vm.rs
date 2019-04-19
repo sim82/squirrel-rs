@@ -661,6 +661,13 @@ impl Executor {
 
                     LoopState::Continue
                 }
+                // Opcode::SET => {
+                //     let obj = self.stack.get_arg1(instr);
+
+                //     LoopState::Continue
+                //     //  if (!Set(STK(arg1), STK(arg2), STK(arg3),arg1)) { SQ_THROW(); }
+                //     // if (arg0 != 0xFF) TARGET = STK(arg3);
+                // }
                 _ => {
                     return Err(Error::RuntimeError(format!(
                         "unhandled opcode: {:?}",

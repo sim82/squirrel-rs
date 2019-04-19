@@ -254,6 +254,12 @@ impl Object {
             _ => Err(Error::RuntimeError(format!("cannot clone {}", self))),
         }
     }
+
+    // pub fn key_value_access(&self) -> Result<&KeyValueAccess> {
+    //     match self {
+    //         Object::Table(t) => Ok(&(*t.borrow()),
+    //     }
+    // }
     // fn table_mut(&mut self) -> Result<Rc<object::Table>> {
     //     match self {
     //         Object::Table(t) => Ok(t.clone()),
@@ -331,6 +337,13 @@ impl std::cmp::Eq for Object {}
 //         }
 //     }
 // }
+
+trait KeyValueAccess {
+    fn get(&self, key: &Object) -> Result<&Object>;
+    fn get_mut(&mut self, key: &Object) -> Result<&mut Object>;
+
+    fn set(&mut self, key: &Object, value: Object);
+}
 
 pub fn native_closure(func: Box<Fn(&mut vm::Stack)>, nargs: types::Integer) -> Object {
     Object::NativeClosure(Rc::new(object::NativeClosure::new(func, nargs)))
